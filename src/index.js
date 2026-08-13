@@ -5,6 +5,7 @@ const http = require('node:http');
 
 const { startWhatsApp } = require('./whatsapp');
 const { createAiClient } = require('./ai');
+const { renderPanel, isAuthorized } = require('./admin');
 const {
   initStore,
   getHistory,
@@ -69,14 +70,35 @@ async function main() {
 
   await startWhatsApp(BAILEYS_AUTH_PATH, onMessage);
 
-  // --- Servidor HTTP mínimo: Render necesita un puerto abierto para el healthcheck ---
+  // --- Servidor HTTP: healthcheck de Render + panel de administración ---
   const port = env.PORT || 3000;
+  const adminPassword = env.ADMIN_PASSWORD || '';
+
+  if (!adminPassword) {
+    console.warn(
+      'AVISO: no hay ADMIN_PASSWORD configurada — el panel de administración quedará inaccesible hasta que la agregues.'
+    );
+  }
+
   http
     .createServer((req, res) => {
+      const path = req.url.split('?')[0];
+
+      if (path === '/admin') {
+        if (!isAuthorized(req, adminPassword)) {
+          res.writeHead(401, { 'Content-Type': 'text/plain' });
+          res.end('No autorizado. Agrega ?key=TU_CLAVE a la URL.');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderPanel(db, env));
+        return;
+      }
+
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('IA VIREX activa.');
     })
-    .listen(port, () => console.log(`Healthcheck escuchando en :${port}`));
+    .listen(port, () => console.log(`Servidor escuchando en :${port} (panel en /admin)`));
 }
 
 main().catch((err) => {

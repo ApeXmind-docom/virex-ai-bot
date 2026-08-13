@@ -1,7 +1,9 @@
 'use strict';
 
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const pino = require('pino');
+const state = require('./state');
 
 /**
  * @param {string} authPath  Carpeta persistente donde vive la sesión (disco de Render).
@@ -15,13 +17,13 @@ async function startWhatsApp(authPath, onMessage) {
     fetchLatestBaileysVersion,
   } = await import('@whiskeysockets/baileys');
 
-  const { state, saveCreds } = await useMultiFileAuthState(authPath);
+  const { state: authState, saveCreds } = await useMultiFileAuthState(authPath);
   const { version } = await fetchLatestBaileysVersion();
   const logger = pino({ level: 'warn' });
 
   const sock = makeWASocket({
     version,
-    auth: state,
+    auth: authState,
     logger,
     printQRInTerminal: false,
   });
@@ -34,21 +36,28 @@ async function startWhatsApp(authPath, onMessage) {
     if (qr) {
       console.log('\n=== Escanea este QR con el WhatsApp del número de IA VIREX ===\n');
       qrcode.generate(qr, { small: true });
+      QRCode.toDataURL(qr, { margin: 1, width: 320 })
+        .then((dataUrl) => state.setQr(dataUrl))
+        .catch((err) => console.error('Error generando QR para el panel:', err));
     }
 
     if (connection === 'close') {
+      state.setDisconnected();
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
       console.log('Conexión cerrada.', { statusCode, shouldReconnect });
       if (shouldReconnect) {
+        state.setConnecting();
         startWhatsApp(authPath, onMessage);
       } else {
         console.log('Sesión cerrada (logout). Borra la carpeta de auth y vuelve a escanear el QR.');
       }
     } else if (connection === 'open') {
+      state.setConnected();
       console.log('✓ IA VIREX conectada a WhatsApp');
     }
   });
+
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;

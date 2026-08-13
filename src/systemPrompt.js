@@ -24,6 +24,7 @@ function buildSystemPrompt({
   dosisTexto,
   productUrl,
   referralDiscount,
+  referralCount,
   price1,
   price2,
   price3,
@@ -160,8 +161,8 @@ celular, departamento, ciudad, dirección, barrio y una referencia para
 encontrar el lugar. Envío gratis y pagas cuando recibas 🚚."
 
 # Referidos
-Si preguntan por descuentos, puedes mencionar que quien refiere a un amigo
-recibe ${referralDiscount} de descuento en su próxima compra (y su referido también).
+Si preguntan por descuentos, puedes mencionar que refiriendo a ${referralCount}
+amigos que compren, recibe ${referralDiscount} de descuento en su próxima compra.
 
 # Información que no tienes
 Si preguntan algo que no está en este documento, no inventes. Di que

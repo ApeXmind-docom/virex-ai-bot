@@ -93,6 +93,33 @@ function isUserRateLimited(db, phone, maxPerHour) {
   return false;
 }
 
+/** Estadísticas para el panel de administración. */
+function getStats(db) {
+  const day = todayKey();
+  const dayStartMs = new Date(day + 'T00:00:00').getTime();
+
+  const todayCalls = db.prepare(`SELECT api_calls FROM daily_usage WHERE day = ?`).get(day);
+  const totalConversations = db.prepare(`SELECT COUNT(DISTINCT phone) AS n FROM messages`).get();
+  const todayConversations = db
+    .prepare(`SELECT COUNT(DISTINCT phone) AS n FROM messages WHERE created_at >= ?`)
+    .get(dayStartMs);
+  const totalMessages = db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE role = 'user'`).get();
+  const recentPhones = db
+    .prepare(
+      `SELECT phone, MAX(created_at) AS last_at FROM messages
+       GROUP BY phone ORDER BY last_at DESC LIMIT 10`
+    )
+    .all();
+
+  return {
+    apiCallsToday: todayCalls ? todayCalls.api_calls : 0,
+    conversationsTotal: totalConversations.n,
+    conversationsToday: todayConversations.n,
+    messagesTotal: totalMessages.n,
+    recentPhones,
+  };
+}
+
 module.exports = {
   initStore,
   getHistory,
@@ -100,4 +127,5 @@ module.exports = {
   isDailyCapReached,
   incrementDailyUsage,
   isUserRateLimited,
+  getStats,
 };
