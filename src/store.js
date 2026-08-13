@@ -104,6 +104,9 @@ function getStats(db) {
     .prepare(`SELECT COUNT(DISTINCT phone) AS n FROM messages WHERE created_at >= ?`)
     .get(dayStartMs);
   const totalMessages = db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE role = 'user'`).get();
+  const todayMessages = db
+    .prepare(`SELECT COUNT(*) AS n FROM messages WHERE role = 'user' AND created_at >= ?`)
+    .get(dayStartMs);
   const recentPhones = db
     .prepare(
       `SELECT phone, MAX(created_at) AS last_at FROM messages
@@ -116,8 +119,32 @@ function getStats(db) {
     conversationsTotal: totalConversations.n,
     conversationsToday: todayConversations.n,
     messagesTotal: totalMessages.n,
+    messagesToday: todayMessages.n,
     recentPhones,
   };
+}
+
+/** Lista completa de conversaciones (una fila por número), para la pestaña Conversaciones. */
+function listConversations(db) {
+  return db
+    .prepare(
+      `SELECT phone,
+              MAX(created_at) AS last_at,
+              MIN(created_at) AS first_at,
+              COUNT(*) FILTER (WHERE role = 'user') AS user_messages,
+              COUNT(*) AS total_messages
+       FROM messages
+       GROUP BY phone
+       ORDER BY last_at DESC`
+    )
+    .all();
+}
+
+/** Hilo completo de una conversación puntual, en orden cronológico. */
+function getFullThread(db, phone) {
+  return db
+    .prepare(`SELECT role, content, created_at FROM messages WHERE phone = ? ORDER BY created_at ASC`)
+    .all(phone);
 }
 
 module.exports = {
@@ -128,4 +155,6 @@ module.exports = {
   incrementDailyUsage,
   isUserRateLimited,
   getStats,
+  listConversations,
+  getFullThread,
 };

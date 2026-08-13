@@ -84,21 +84,38 @@ async function main() {
     .createServer((req, res) => {
       const path = req.url.split('?')[0];
 
+      // Ruta liviana y sin contraseña para que Render pueda confirmar que
+      // el servicio sigue vivo, sin depender del panel protegido.
+      if (path === '/healthz') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('ok');
+        return;
+      }
+
+      // Compatibilidad: si alguien todavía tiene guardado el link viejo
+      // con /admin, lo mandamos a la raíz con la misma clave.
       if (path === '/admin') {
+        const query = req.url.split('?')[1];
+        res.writeHead(302, { Location: query ? '/?' + query : '/' });
+        res.end();
+        return;
+      }
+
+      if (path === '/') {
         if (!isAuthorized(req, adminPassword)) {
           res.writeHead(401, { 'Content-Type': 'text/plain' });
           res.end('No autorizado. Agrega ?key=TU_CLAVE a la URL.');
           return;
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderPanel(db, env));
+        res.end(renderPanel(db, env, req, adminPassword));
         return;
       }
 
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('IA VIREX activa.');
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('No encontrado.');
     })
-    .listen(port, () => console.log(`Servidor escuchando en :${port} (panel en /admin)`));
+    .listen(port, () => console.log(`Servidor escuchando en :${port} (panel en la raíz /)`));
 }
 
 main().catch((err) => {
