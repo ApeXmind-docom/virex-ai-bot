@@ -5,7 +5,8 @@ const http = require('node:http');
 
 const { startWhatsApp } = require('./whatsapp');
 const { createAiClient } = require('./ai');
-const { renderPanel, isAuthorized } = require('./admin');
+const { renderPanel, renderLoginPage } = require('./admin');
+const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
   initStore,
   getHistory,
@@ -72,7 +73,10 @@ async function main() {
 
   // --- Servidor HTTP: healthcheck de Render + panel de administración ---
   const port = env.PORT || 3000;
+  const adminUsername = env.ADMIN_USERNAME || 'admin';
   const adminPassword = env.ADMIN_PASSWORD || '';
+  const isProd = env.NODE_ENV === 'production' || !!env.RENDER;
+  const SESSION_COOKIE = 'virex_session';
 
   if (!adminPassword) {
     console.warn(
@@ -80,42 +84,90 @@ async function main() {
     );
   }
 
+  function hasValidSession(req) {
+    const cookies = parseCookies(req);
+    return isValidSession(cookies[SESSION_COOKIE]);
+  }
+
+  function setSessionCookie(res, token) {
+    const parts = [
+      `${SESSION_COOKIE}=${token}`,
+      'HttpOnly',
+      'Path=/',
+      'Max-Age=604800', // 7 días
+      'SameSite=Lax',
+    ];
+    if (isProd) parts.push('Secure');
+    res.setHeader('Set-Cookie', parts.join('; '));
+  }
+
+  function clearSessionCookie(res) {
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`);
+  }
+
   http
-    .createServer((req, res) => {
+    .createServer(async (req, res) => {
       const path = req.url.split('?')[0];
 
       // Ruta liviana y sin contraseña para que Render pueda confirmar que
-      // el servicio sigue vivo, sin depender del panel protegido.
+      // el servicio sigue vivo, sin depender del login.
       if (path === '/healthz') {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('ok');
         return;
       }
 
-      // Compatibilidad: si alguien todavía tiene guardado el link viejo
-      // con /admin, lo mandamos a la raíz con la misma clave.
+      // Compatibilidad con el link viejo que usaba ?key=... en la URL.
       if (path === '/admin') {
-        const query = req.url.split('?')[1];
-        res.writeHead(302, { Location: query ? '/?' + query : '/' });
+        res.writeHead(302, { Location: '/' });
         res.end();
         return;
       }
 
+      if (path === '/login' && req.method === 'POST') {
+        const { username, password } = await parseFormBody(req);
+        if (username === adminUsername && password === adminPassword && adminPassword) {
+          const token = createSession();
+          setSessionCookie(res, token);
+          res.writeHead(302, { Location: '/' });
+          res.end();
+        } else {
+          res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(renderLoginPage({ error: true }));
+        }
+        return;
+      }
+
+      if (path === '/logout' && req.method === 'POST') {
+        const cookies = parseCookies(req);
+        if (cookies[SESSION_COOKIE]) destroySession(cookies[SESSION_COOKIE]);
+        clearSessionCookie(res);
+        res.writeHead(302, { Location: '/login' });
+        res.end();
+        return;
+      }
+
+      if (path === '/login') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderLoginPage());
+        return;
+      }
+
       if (path === '/') {
-        if (!isAuthorized(req, adminPassword)) {
-          res.writeHead(401, { 'Content-Type': 'text/plain' });
-          res.end('No autorizado. Agrega ?key=TU_CLAVE a la URL.');
+        if (!hasValidSession(req)) {
+          res.writeHead(302, { Location: '/login' });
+          res.end();
           return;
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderPanel(db, env, req, adminPassword));
+        res.end(renderPanel(db, env, req));
         return;
       }
 
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('No encontrado.');
     })
-    .listen(port, () => console.log(`Servidor escuchando en :${port} (panel en la raíz /)`));
+    .listen(port, () => console.log(`Servidor escuchando en :${port} (panel en la raíz /, login en /login)`));
 }
 
 main().catch((err) => {

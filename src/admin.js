@@ -74,9 +74,24 @@ const SHARED_STYLES = `
   .msg .meta{font-family:monospace;font-size:.6875rem;color:#7a7a7a;margin-bottom:.3rem}
   .empty{color:#7a7a7a;padding:1.5rem;text-align:center;font-size:.875rem}
   .backlink{font-family:monospace;font-size:.75rem;color:#7a7a7a;display:inline-block;margin-bottom:1rem}
+  .logout-btn{font-family:monospace;font-size:.75rem;letter-spacing:.05em;color:#7a7a7a;
+    border:1px solid #2a2a2a;border-radius:4px;padding:.5rem .875rem;background:transparent;cursor:pointer}
+  .logout-btn:hover{color:#edeae4;border-color:#3a3a3a}
+  .login-wrap{min-height:100svh;display:flex;align-items:center;justify-content:center;padding:1.25rem}
+  .login-card{width:100%;max-width:22rem;border:1px solid #1f1f1f;background:#0e0e0e;
+    border-radius:8px;padding:2rem}
+  .login-card label{display:block;font-family:monospace;font-size:.6875rem;letter-spacing:.06em;
+    text-transform:uppercase;color:#7a7a7a;margin-top:1rem;margin-bottom:.4rem}
+  .login-card input{width:100%;background:#050505;border:1px solid #2a2a2a;border-radius:4px;
+    padding:.7rem .875rem;color:#edeae4;font-size:.9375rem}
+  .login-card input:focus{outline:none;border-color:#e01b12}
+  .login-btn{width:100%;margin-top:1.5rem;background:#e01b12;color:#edeae4;border:none;
+    border-radius:4px;padding:.8rem;font-weight:700;font-size:.9375rem;cursor:pointer}
+  .login-btn:hover{background:#ff3b24}
+  .login-error{color:#e01b12;font-size:.8125rem;margin-top:1rem;text-align:center}
 `;
 
-function layout({ title, activeTab, key, statusPill, body }) {
+function layout({ title, activeTab, statusPill, body }) {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -94,12 +109,17 @@ function layout({ title, activeTab, key, statusPill, body }) {
       <p class="brand-title">IA VIREX</p>
       <p class="brand-sub">Panel de control</p>
     </div>
-    ${statusPill}
+    <div style="display:flex;align-items:center;gap:.75rem">
+      ${statusPill}
+      <form method="POST" action="/logout" style="margin:0">
+        <button type="submit" class="logout-btn">Cerrar sesión</button>
+      </form>
+    </div>
   </div>
 
   <div class="tabs">
-    <a class="tab ${activeTab === 'dashboard' ? 'active' : ''}" href="/?key=${key}">Dashboard</a>
-    <a class="tab ${activeTab === 'conversaciones' ? 'active' : ''}" href="/?key=${key}&tab=conversaciones">Conversaciones</a>
+    <a class="tab ${activeTab === 'dashboard' ? 'active' : ''}" href="/">Dashboard</a>
+    <a class="tab ${activeTab === 'conversaciones' ? 'active' : ''}" href="/?tab=conversaciones">Conversaciones</a>
   </div>
 
   ${body}
@@ -108,7 +128,7 @@ function layout({ title, activeTab, key, statusPill, body }) {
 </html>`;
 }
 
-function statusPillHtml(s, key) {
+function statusPillHtml(s) {
   const label = s.status === 'connected' ? 'Conectada' : s.status === 'connecting' ? 'Conectando…' : 'Desconectada';
   const color = s.status === 'connected' ? '#1fae5f' : s.status === 'connecting' ? '#e0a51b' : '#e01b12';
   return `<span class="pill"><span class="dot" style="background:${color}"></span>${label}${
@@ -116,7 +136,7 @@ function statusPillHtml(s, key) {
   }</span>`;
 }
 
-function renderDashboard(db, env, key) {
+function renderDashboard(db, env) {
   const s = state.getState();
   const stats = getStats(db);
   const dailyCap = Number(env.MAX_DAILY_API_CALLS || 300);
@@ -132,7 +152,7 @@ function renderDashboard(db, env, key) {
 
   const recentRows = stats.recentPhones
     .map(
-      (r) => `<tr class="rowlink" onclick="location.href='/?key=${key}&tab=conversaciones&phone=${encodeURIComponent(r.phone)}'">
+      (r) => `<tr class="rowlink" onclick="location.href='/?tab=conversaciones&phone=${encodeURIComponent(r.phone)}'">
         <td>${maskPhone(r.phone)}</td><td style="color:#7a7a7a">${formatSince(r.last_at)}</td></tr>`
     )
     .join('');
@@ -163,16 +183,16 @@ function renderDashboard(db, env, key) {
       </table>
     </div>`;
 
-  return layout({ title: 'IA VIREX — Panel', activeTab: 'dashboard', key, statusPill: statusPillHtml(s, key), body });
+  return layout({ title: 'IA VIREX — Panel', activeTab: 'dashboard', statusPill: statusPillHtml(s), body });
 }
 
-function renderConversationList(db, key) {
+function renderConversationList(db) {
   const s = state.getState();
   const conversations = listConversations(db);
 
   const rows = conversations
     .map(
-      (c) => `<tr class="rowlink" onclick="location.href='/?key=${key}&tab=conversaciones&phone=${encodeURIComponent(c.phone)}'">
+      (c) => `<tr class="rowlink" onclick="location.href='/?tab=conversaciones&phone=${encodeURIComponent(c.phone)}'">
         <td>${maskPhone(c.phone)}</td>
         <td>${c.user_messages}</td>
         <td style="color:#7a7a7a">${formatSince(c.last_at)}</td>
@@ -192,13 +212,12 @@ function renderConversationList(db, key) {
   return layout({
     title: 'IA VIREX — Conversaciones',
     activeTab: 'conversaciones',
-    key,
-    statusPill: statusPillHtml(s, key),
+    statusPill: statusPillHtml(s),
     body,
   });
 }
 
-function renderConversationDetail(db, key, phone) {
+function renderConversationDetail(db, phone) {
   const s = state.getState();
   const thread = getFullThread(db, phone);
 
@@ -212,7 +231,7 @@ function renderConversationDetail(db, key, phone) {
     .join('');
 
   const body = `
-    <a class="backlink" href="/?key=${key}&tab=conversaciones">&larr; Volver a conversaciones</a>
+    <a class="backlink" href="/?tab=conversaciones">&larr; Volver a conversaciones</a>
     <div class="card">
       <strong>Conversación con ${maskPhone(phone)}</strong>
       <div style="margin-top:1rem">${bubbles || '<p class="empty">Sin mensajes.</p>'}</div>
@@ -221,32 +240,50 @@ function renderConversationDetail(db, key, phone) {
   return layout({
     title: 'IA VIREX — Conversación',
     activeTab: 'conversaciones',
-    key,
-    statusPill: statusPillHtml(s, key),
+    statusPill: statusPillHtml(s),
     body,
   });
 }
 
 /** Decide qué vista renderizar según los parámetros de la URL. */
-function renderPanel(db, env, req, key) {
+function renderPanel(db, env, req) {
   const url = new URL(req.url, 'http://localhost');
   const tab = url.searchParams.get('tab');
   const phone = url.searchParams.get('phone');
 
-  if (tab === 'conversaciones' && phone) return renderConversationDetail(db, key, phone);
-  if (tab === 'conversaciones') return renderConversationList(db, key);
-  return renderDashboard(db, env, key);
+  if (tab === 'conversaciones' && phone) return renderConversationDetail(db, phone);
+  if (tab === 'conversaciones') return renderConversationList(db);
+  return renderDashboard(db, env);
 }
 
-/** true si la request trae la clave correcta (?key=... en la URL). */
-function isAuthorized(req, adminPassword) {
-  if (!adminPassword) return false; // sin contraseña configurada, el panel no se sirve nunca
-  try {
-    const url = new URL(req.url, 'http://localhost');
-    return url.searchParams.get('key') === adminPassword;
-  } catch {
-    return false;
-  }
+/** Pantalla de login: usuario + contraseña. */
+function renderLoginPage({ error } = {}) {
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IA VIREX — Iniciar sesión</title>
+<style>${SHARED_STYLES}</style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <p class="brand-eyebrow">PRAXO</p>
+      <p class="brand-title" style="margin-bottom:0">IA VIREX</p>
+      <p class="brand-sub">Panel de control</p>
+      <form method="POST" action="/login">
+        <label for="username">Usuario</label>
+        <input id="username" name="username" type="text" autocomplete="username" required autofocus>
+        <label for="password">Contraseña</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit" class="login-btn">Entrar</button>
+        ${error ? `<p class="login-error">Usuario o contraseña incorrectos.</p>` : ''}
+      </form>
+    </div>
+  </div>
+</body>
+</html>`;
 }
 
-module.exports = { renderPanel, isAuthorized };
+module.exports = { renderPanel, renderLoginPage };
