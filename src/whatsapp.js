@@ -1,11 +1,5 @@
 'use strict';
 
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-} = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 
@@ -14,6 +8,13 @@ const pino = require('pino');
  * @param {(phone:string, text:string) => Promise<void>} onMessage  Handler de mensajes entrantes.
  */
 async function startWhatsApp(authPath, onMessage) {
+  const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    DisconnectReason,
+    fetchLatestBaileysVersion,
+  } = await import('@whiskeysockets/baileys');
+
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const { version } = await fetchLatestBaileysVersion();
   const logger = pino({ level: 'warn' });
