@@ -5,6 +5,7 @@ const http = require('node:http');
 
 const { startWhatsApp } = require('./whatsapp');
 const { createAiClient } = require('./ai');
+const { createTranscriber } = require('./transcribe');
 const { renderPanel, renderLoginPage } = require('./admin');
 const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
@@ -32,6 +33,7 @@ async function main() {
 
   const db = initStore(DB_PATH);
   const ai = createAiClient(env);
+  const transcriber = createTranscriber(env);
 
   async function onMessage(phone, text, sock) {
     // --- Tope diario global: se revisa ANTES de gastar nada ---
@@ -47,7 +49,7 @@ async function main() {
     if (isUserRateLimited(db, phone, MAX_USER_MESSAGES_PER_HOUR)) {
       console.warn(`Usuario ${phone} superó el límite de ${MAX_USER_MESSAGES_PER_HOUR} msg/hora.`);
       await sock.sendMessage(phone, {
-        text: 'Vamos con calma un momento 🙂 Te respondo en un rato, dame unos minutos.',
+        text: 'Estoy atendiendo a varias personas en este momento 😊 Dame unos minutos y sigo contigo.',
       });
       return;
     }
@@ -69,7 +71,7 @@ async function main() {
     await sock.sendMessage(phone, { text: answer });
   }
 
-  await startWhatsApp(BAILEYS_AUTH_PATH, onMessage);
+  await startWhatsApp(BAILEYS_AUTH_PATH, onMessage, transcriber);
 
   // --- Servidor HTTP: healthcheck de Render + panel de administración ---
   const port = env.PORT || 3000;

@@ -11,8 +11,9 @@ const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000; // tope de 5 minutos entre intento
 /**
  * @param {string} authPath  Carpeta persistente donde vive la sesión (disco de Render).
  * @param {(phone:string, text:string) => Promise<void>} onMessage  Handler de mensajes entrantes.
+ * @param {{transcribe:Function}|null} transcriber  Transcriptor de notas de voz (Whisper), o null si no está configurado.
  */
-async function startWhatsApp(authPath, onMessage) {
+async function startWhatsApp(authPath, onMessage, transcriber) {
   const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -76,7 +77,7 @@ async function startWhatsApp(authPath, onMessage) {
       console.log(
         `Conexión cerrada (código ${statusCode}). Reintentando en ${Math.round(delayMs / 1000)}s (intento ${reconnectAttempts})...`
       );
-      setTimeout(() => startWhatsApp(authPath, onMessage), delayMs);
+      setTimeout(() => startWhatsApp(authPath, onMessage, transcriber), delayMs);
     } else if (connection === 'open') {
       reconnectAttempts = 0; // se reconectó bien, resetea el contador de espera
       state.setConnected();
@@ -95,11 +96,45 @@ async function startWhatsApp(authPath, onMessage) {
       const phone = msg.key.remoteJid;
       if (!phone || phone.endsWith('@g.us')) continue; // ignorar grupos
 
-      const text =
+      let text =
         msg.message.conversation ||
         msg.message.extendedTextMessage?.text ||
         msg.message.imageMessage?.caption ||
         '';
+
+      // --- Notas de voz: se transcriben y se tratan igual que un texto ---
+      const audio = msg.message.audioMessage;
+      if (!text.trim() && audio) {
+        if (!transcriber) {
+          console.warn('Llegó una nota de voz pero no hay transcriptor configurado.');
+          await sock.sendMessage(phone, {
+            text: 'Por ahora no puedo escuchar notas de voz 😅 ¿me lo escribes?',
+          });
+          continue;
+        }
+
+        try {
+          const { downloadMediaMessage } = await import('@whiskeysockets/baileys');
+          const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+          const transcrito = await transcriber.transcribe(buffer, audio.seconds);
+
+          if (transcrito) {
+            console.log(`Nota de voz transcrita de ${phone}: "${transcrito.slice(0, 60)}..."`);
+            text = transcrito;
+          } else {
+            await sock.sendMessage(phone, {
+              text: 'No alcancé a entender bien el audio 😅 ¿me lo repites o me lo escribes?',
+            });
+            continue;
+          }
+        } catch (err) {
+          console.error('Error descargando/transcribiendo nota de voz:', err.message);
+          await sock.sendMessage(phone, {
+            text: 'Tuve un problema escuchando tu audio 😅 ¿me lo escribes mejor?',
+          });
+          continue;
+        }
+      }
 
       if (!text.trim()) continue;
 
