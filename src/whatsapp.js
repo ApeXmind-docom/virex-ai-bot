@@ -5,6 +5,9 @@ const QRCode = require('qrcode');
 const pino = require('pino');
 const state = require('./state');
 
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000; // tope de 5 minutos entre intentos
+
 /**
  * @param {string} authPath  Carpeta persistente donde vive la sesión (disco de Render).
  * @param {(phone:string, text:string) => Promise<void>} onMessage  Handler de mensajes entrantes.
@@ -42,49 +45,30 @@ async function startWhatsApp(authPath, onMessage) {
     }
 
     if (connection === 'close') {
-      state.setDisconnected();
       const statusCode = lastDisconnect?.error?.output?.statusCode;
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-      console.log('Conexión cerrada.', { statusCode, shouldReconnect });
-      if (shouldReconnect) {
-        state.setConnecting();
-        startWhatsApp(authPath, onMessage);
-      } else {
-        console.log('Sesión cerrada (logout). Borra la carpeta de auth y vuelve a escanear el QR.');
+
+      // Casos donde NO hay que reintentar nunca — requieren intervención
+      // humana (volver a escanear QR, o revisar el estado con Meta).
+      // Reintentar automáticamente en estos casos es lo que causó el
+      // problema anterior: machacar el servidor con una sesión ya inválida.
+      const noReintentar = [
+        DisconnectReason.loggedOut, // sesión cerrada manualmente
+        DisconnectReason.forbidden, // 403 — número bloqueado o rechazado por WhatsApp
+        DisconnectReason.badSession, // sesión corrupta, necesita QR nuevo
+      ];
+
+      if (noReintentar.includes(statusCode)) {
+        state.setBlocked(statusCode);
+        console.error(
+          `⛔ Conexión cerrada de forma DEFINITIVA (código ${statusCode}). NO se reintentará automáticamente.`,
+          statusCode === DisconnectReason.forbidden
+            ? 'El número puede estar bloqueado por WhatsApp/Meta — revisa el estado de la cuenta antes de volver a intentar.'
+            : 'Borra la carpeta de auth y vuelve a escanear el QR desde el panel.'
+        );
+        return;
       }
-    } else if (connection === 'open') {
-      state.setConnected();
-      console.log('✓ IA VIREX conectada a WhatsApp');
-    }
-  });
 
-
-  sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return;
-
-    for (const msg of messages) {
-      if (!msg.message || msg.key.fromMe) continue;
-
-      const phone = msg.key.remoteJid;
-      if (!phone || phone.endsWith('@g.us')) continue; // ignorar grupos
-
-      const text =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        msg.message.imageMessage?.caption ||
-        '';
-
-      if (!text.trim()) continue;
-
-      try {
-        await onMessage(phone, text.trim(), sock);
-      } catch (err) {
-        console.error('Error procesando mensaje de', phone, err);
-      }
-    }
-  });
-
-  return sock;
-}
-
-module.exports = { startWhatsApp };
+      // Para el resto de casos (caída de red, reinicio de Render, etc.),
+      // sí reconectamos, pero con espera progresiva — nunca en loop cerrado.
+      reconnectAttempts += 1;
+      const
