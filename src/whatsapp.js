@@ -71,4 +71,47 @@ async function startWhatsApp(authPath, onMessage) {
       // Para el resto de casos (caída de red, reinicio de Render, etc.),
       // sí reconectamos, pero con espera progresiva — nunca en loop cerrado.
       reconnectAttempts += 1;
-      const
+      const delayMs = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY_MS);
+      state.setConnecting();
+      console.log(
+        `Conexión cerrada (código ${statusCode}). Reintentando en ${Math.round(delayMs / 1000)}s (intento ${reconnectAttempts})...`
+      );
+      setTimeout(() => startWhatsApp(authPath, onMessage), delayMs);
+    } else if (connection === 'open') {
+      reconnectAttempts = 0; // se reconectó bien, resetea el contador de espera
+      state.setConnected();
+      console.log('✓ IA VIREX conectada a WhatsApp');
+    }
+  });
+
+
+
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
+
+    for (const msg of messages) {
+      if (!msg.message || msg.key.fromMe) continue;
+
+      const phone = msg.key.remoteJid;
+      if (!phone || phone.endsWith('@g.us')) continue; // ignorar grupos
+
+      const text =
+        msg.message.conversation ||
+        msg.message.extendedTextMessage?.text ||
+        msg.message.imageMessage?.caption ||
+        '';
+
+      if (!text.trim()) continue;
+
+      try {
+        await onMessage(phone, text.trim(), sock);
+      } catch (err) {
+        console.error('Error procesando mensaje de', phone, err);
+      }
+    }
+  });
+
+  return sock;
+}
+
+module.exports = { startWhatsApp };
