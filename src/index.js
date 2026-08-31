@@ -6,6 +6,7 @@ const http = require('node:http');
 const { startWhatsApp } = require('./whatsapp');
 const { createAiClient } = require('./ai');
 const { createTranscriber } = require('./transcribe');
+const { waitLikeHuman } = require('./humanize');
 const { renderPanel, renderLoginPage } = require('./admin');
 const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
@@ -68,6 +69,7 @@ async function main() {
     saveMessage(db, phone, 'user', text);
     saveMessage(db, phone, 'assistant', answer);
 
+    await waitLikeHuman(sock, phone, answer);
     await sock.sendMessage(phone, { text: answer });
   }
 
