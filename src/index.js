@@ -2,11 +2,13 @@
 
 require('dotenv').config();
 const http = require('node:http');
+const nodePath = require('node:path');
 
 const { startWhatsApp } = require('./whatsapp');
 const { createAiClient } = require('./ai');
 const { createTranscriber } = require('./transcribe');
 const { waitLikeHuman } = require('./humanize');
+const { acquireSingletonLock } = require('./singleton');
 const { renderPanel, renderLoginPage } = require('./admin');
 const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
@@ -72,8 +74,6 @@ async function main() {
     await waitLikeHuman(sock, phone, answer);
     await sock.sendMessage(phone, { text: answer });
   }
-
-  await startWhatsApp(BAILEYS_AUTH_PATH, onMessage, transcriber);
 
   // --- Servidor HTTP: healthcheck de Render + panel de administración ---
   const port = env.PORT || 3000;
@@ -172,6 +172,17 @@ async function main() {
       res.end('No encontrado.');
     })
     .listen(port, () => console.log(`Servidor escuchando en :${port} (panel en la raíz /, login en /login)`));
+
+  // --- WhatsApp: se conecta después de tomar el candado de instancia única.
+  // Evita que dos procesos abran la misma sesión a la vez (ej. un redeploy
+  // con solapamiento en un Web Service) — eso fue lo que causó el
+  // conflicto "device_removed" (401) que tumbó la sesión antes. No bloquea
+  // el arranque del servidor HTTP, así el healthcheck de Render sigue
+  // respondiendo mientras espera el candado.
+  const lockPath = nodePath.join(nodePath.dirname(BAILEYS_AUTH_PATH), 'whatsapp.lock');
+  acquireSingletonLock(lockPath)
+    .then(() => startWhatsApp(BAILEYS_AUTH_PATH, onMessage, transcriber))
+    .catch((err) => console.error('Error fatal conectando WhatsApp:', err));
 }
 
 main().catch((err) => {
