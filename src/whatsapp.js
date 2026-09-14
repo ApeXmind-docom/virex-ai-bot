@@ -38,7 +38,7 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log('\n=== Escanea este QR con el WhatsApp del número de IA VIREX ===\n');
+      console.log('\n=== Escanea este QR con el WhatsApp del número de Paola (VIREX) ===\n');
       qrcode.generate(qr, { small: true });
       QRCode.toDataURL(qr, { margin: 1, width: 320 })
         .then((dataUrl) => state.setQr(dataUrl))
@@ -81,7 +81,7 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
     } else if (connection === 'open') {
       reconnectAttempts = 0; // se reconectó bien, resetea el contador de espera
       state.setConnected();
-      console.log('✓ IA VIREX conectada a WhatsApp');
+      console.log('✓ Paola (VIREX) conectada a WhatsApp');
     }
   });
 
