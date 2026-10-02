@@ -75,6 +75,32 @@ async function main() {
     await sock.sendMessage(phone, { text: answer });
   }
 
+  // Los clientes mandan ráfagas ("quiero el producto" + "mami"). Se esperan
+  // unos segundos y se responde UNA vez a todo junto, en orden por teléfono.
+  const DEBOUNCE_MS = Number(env.MESSAGE_DEBOUNCE_MS || 4000);
+  const pendingByPhone = new Map();
+  const inFlightByPhone = new Map();
+
+  function enqueueMessage(phone, text, sock) {
+    const entry = pendingByPhone.get(phone) || { texts: [] };
+    entry.texts.push(text);
+    entry.sock = sock;
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+      pendingByPhone.delete(phone);
+      const joined = entry.texts.join('\n');
+      const previous = inFlightByPhone.get(phone) || Promise.resolve();
+      const current = previous
+        .then(() => onMessage(phone, joined, entry.sock))
+        .catch((err) => console.error('Error procesando mensajes de', phone, err))
+        .finally(() => {
+          if (inFlightByPhone.get(phone) === current) inFlightByPhone.delete(phone);
+        });
+      inFlightByPhone.set(phone, current);
+    }, DEBOUNCE_MS);
+    pendingByPhone.set(phone, entry);
+  }
+
   // --- Servidor HTTP: healthcheck de Render + panel de administración ---
   const port = env.PORT || 3000;
   const adminUsername = env.ADMIN_USERNAME || 'admin';
@@ -181,7 +207,7 @@ async function main() {
   // respondiendo mientras espera el candado.
   const lockPath = nodePath.join(nodePath.dirname(BAILEYS_AUTH_PATH), 'whatsapp.lock');
   acquireSingletonLock(lockPath)
-    .then(() => startWhatsApp(BAILEYS_AUTH_PATH, onMessage, transcriber))
+    .then(() => startWhatsApp(BAILEYS_AUTH_PATH, enqueueMessage, transcriber))
     .catch((err) => console.error('Error fatal conectando WhatsApp:', err));
 }
 
