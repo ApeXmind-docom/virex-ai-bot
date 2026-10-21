@@ -8,6 +8,13 @@ const state = require('./state');
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY_MS = 5 * 60 * 1000; // tope de 5 minutos entre intentos
 
+// Sesión que nunca se vinculó: cada intento es un QR nuevo pedido a WhatsApp.
+// Sin tope, el bot los pedía sin parar (cientos de veces) y WhatsApp puede
+// terminar rechazando la vinculación del número.
+let unlinkedRetries = 0;
+const MAX_UNLINKED_RETRIES = 5;
+const UNLINKED_RETRY_DELAY_MS = 10 * 1000;
+
 /**
  * @param {string} authPath  Carpeta persistente donde vive la sesión (disco de Render).
  * @param {(phone:string, text:string) => Promise<void>} onMessage  Handler de mensajes entrantes.
@@ -69,6 +76,26 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
         return;
       }
 
+      // Nunca se vinculó (nadie escaneó el QR): unos pocos QR nuevos y se
+      // detiene. Para reintentar hay que redesplegar con el celular listo.
+      if (!authState.creds.me) {
+        unlinkedRetries += 1;
+        if (unlinkedRetries >= MAX_UNLINKED_RETRIES) {
+          state.setUnlinked();
+          console.error(
+            `⏸ El QR venció ${unlinkedRetries} veces sin escanearse (código ${statusCode}). Se dejó de pedir QR a WhatsApp. ` +
+              'Redespliega y escanea el QR enseguida, con el celular ya en Dispositivos vinculados.'
+          );
+          return;
+        }
+        state.setConnecting();
+        console.log(
+          `QR sin escanear (código ${statusCode}). Nuevo QR en ${UNLINKED_RETRY_DELAY_MS / 1000}s (${unlinkedRetries}/${MAX_UNLINKED_RETRIES})...`
+        );
+        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber), UNLINKED_RETRY_DELAY_MS);
+        return;
+      }
+
       // Para el resto de casos (caída de red, reinicio de Render, etc.),
       // sí reconectamos, pero con espera progresiva — nunca en loop cerrado.
       reconnectAttempts += 1;
@@ -80,6 +107,7 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
       setTimeout(() => startWhatsApp(authPath, onMessage, transcriber), delayMs);
     } else if (connection === 'open') {
       reconnectAttempts = 0; // se reconectó bien, resetea el contador de espera
+      unlinkedRetries = 0;
       state.setConnected();
       console.log('✓ Paola (VIREX) conectada a WhatsApp');
     }
