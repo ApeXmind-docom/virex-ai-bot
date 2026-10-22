@@ -15,6 +15,9 @@ let unlinkedRetries = 0;
 const MAX_UNLINKED_RETRIES = 5;
 const UNLINKED_RETRY_DELAY_MS = 10 * 1000;
 
+let restartRetries = 0;
+const MAX_RESTART_RETRIES = 5;
+
 /**
  * @param {string} authPath  Carpeta persistente donde vive la sesión (disco de Render).
  * @param {(phone:string, text:string) => Promise<void>} onMessage  Handler de mensajes entrantes.
@@ -76,6 +79,16 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
         return;
       }
 
+      // 515 llega justo después de vincular con éxito y exige reconectar YA.
+      // Esperar (p. ej. 5 min por un contador alto) hace que WhatsApp
+      // invalide la vinculación y devuelva 401.
+      if (statusCode === DisconnectReason.restartRequired && restartRetries < MAX_RESTART_RETRIES) {
+        restartRetries += 1;
+        console.log(`Reinicio requerido por WhatsApp (normal tras vincular). Reconectando ya (${restartRetries}/${MAX_RESTART_RETRIES})...`);
+        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber), 1000);
+        return;
+      }
+
       // Nunca se vinculó (nadie escaneó el QR): unos pocos QR nuevos y se
       // detiene. Para reintentar hay que redesplegar con el celular listo.
       if (!authState.creds.me) {
@@ -108,6 +121,7 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
     } else if (connection === 'open') {
       reconnectAttempts = 0; // se reconectó bien, resetea el contador de espera
       unlinkedRetries = 0;
+      restartRetries = 0;
       state.setConnected();
       console.log('✓ Paola (VIREX) conectada a WhatsApp');
     }
