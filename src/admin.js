@@ -129,8 +129,8 @@ function layout({ title, activeTab, statusPill, body }) {
 }
 
 function statusPillHtml(s) {
-  const labels = { connected: 'Conectada', connecting: 'Conectando…', blocked: 'Bloqueada — revisar', disconnected: 'Desconectada' };
-  const colors = { connected: '#1fae5f', connecting: '#e0a51b', blocked: '#e01b12', disconnected: '#7a7a7a' };
+  const labels = { connected: 'Conectada', connecting: 'Conectando…', blocked: 'Bloqueada — revisar', unlinked: 'Sin vincular', disconnected: 'Desconectada' };
+  const colors = { connected: '#1fae5f', connecting: '#e0a51b', blocked: '#e01b12', unlinked: '#e0a51b', disconnected: '#7a7a7a' };
   const label = labels[s.status] || 'Desconectada';
   const color = colors[s.status] || '#7a7a7a';
   return `<span class="pill"><span class="dot" style="background:${color}"></span>${label}${
@@ -150,6 +150,9 @@ function renderDashboard(db, env) {
       : s.status === 'blocked'
       ? `<p style="color:#e01b12;font-weight:700">⛔ La conexión se cerró de forma definitiva (código ${s.blockedCode}).</p>
          <p style="color:#7a7a7a;font-size:.8125rem;margin-top:.5rem">No se reintenta sola a propósito — puede ser un bloqueo de WhatsApp/Meta. Revisa el estado del número antes de volver a vincular, y contacta a soporte técnico si no estás seguro.</p>`
+      : s.status === 'unlinked'
+      ? `<p style="color:#e0a51b;font-weight:700">⏸ El número no está vinculado y el QR venció varias veces.</p>
+         <p style="color:#7a7a7a;font-size:.8125rem;margin-top:.5rem">Se dejó de pedir QR a WhatsApp a propósito, para no saturarlo. Cuando tengas el celular listo (WhatsApp → Dispositivos vinculados → Vincular), redespliega el servicio en Render y escanea el QR enseguida.</p>`
       : s.qrDataUrl
       ? `<img src="${s.qrDataUrl}" alt="Código QR para vincular WhatsApp" style="width:240px;height:240px;border:1px solid #2a2a2a;border-radius:4px">
          <p style="color:#7a7a7a;font-size:.8125rem;margin-top:.75rem">Escanéalo desde WhatsApp → Dispositivos vinculados. Se renueva solo — refresca la página si expiró.</p>`

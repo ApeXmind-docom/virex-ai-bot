@@ -6,7 +6,7 @@
  * propósito — es solo el estado "de ahora mismo" del proceso.
  */
 const state = {
-  status: 'connecting', // 'connecting' | 'connected' | 'disconnected' | 'blocked'
+  status: 'connecting', // 'connecting' | 'connected' | 'disconnected' | 'blocked' | 'unlinked'
   qrDataUrl: null, // imagen del QR en base64, o null si no hay uno pendiente
   connectedSince: null, // timestamp de cuándo se conectó por última vez
   lastQrAt: null,
@@ -42,8 +42,15 @@ function setBlocked(code) {
   state.qrDataUrl = null;
 }
 
+/** Nunca se vinculó y el QR venció varias veces — se dejó de pedir QR a WhatsApp. */
+function setUnlinked() {
+  state.status = 'unlinked';
+  state.qrDataUrl = null;
+  state.blockedCode = null;
+}
+
 function getState() {
   return { ...state };
 }
 
-module.exports = { setConnecting, setQr, setConnected, setDisconnected, setBlocked, getState };
+module.exports = { setConnecting, setQr, setConnected, setDisconnected, setBlocked, setUnlinked, getState };
