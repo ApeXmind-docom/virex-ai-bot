@@ -9,6 +9,7 @@ const { createAiClient } = require('./ai');
 const { createTranscriber } = require('./transcribe');
 const { waitLikeHuman } = require('./humanize');
 const { acquireSingletonLock } = require('./singleton');
+const { pickScriptedReply } = require('./flow');
 const { renderPanel, renderLoginPage } = require('./admin');
 const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
@@ -27,6 +28,7 @@ const MAX_USER_MESSAGES_PER_HOUR = Number(env.MAX_USER_MESSAGES_PER_HOUR || 12);
 const HISTORY_WINDOW = Number(env.HISTORY_WINDOW || 10);
 const DB_PATH = env.DB_PATH || './data/virex-ai.db';
 const BAILEYS_AUTH_PATH = env.BAILEYS_AUTH_PATH || './data/baileys-auth';
+const VIDEO_URL = env.VIREX_VIDEO_URL || '';
 
 async function main() {
   if (!env.ANTHROPIC_API_KEY) {
@@ -58,6 +60,23 @@ async function main() {
     }
 
     const history = getHistory(db, phone, HISTORY_WINDOW);
+
+    const scripted = pickScriptedReply(history, text, { hasVideo: Boolean(VIDEO_URL) });
+    if (scripted) {
+      const sent = scripted.videoCaption ? `${scripted.text}\n${scripted.videoCaption}` : scripted.text;
+      saveMessage(db, phone, 'user', text);
+      saveMessage(db, phone, 'assistant', sent);
+      await waitLikeHuman(sock, phone, scripted.text);
+      await sock.sendMessage(phone, { text: scripted.text });
+      if (scripted.videoCaption) {
+        try {
+          await sock.sendMessage(phone, { video: { url: VIDEO_URL }, caption: scripted.videoCaption });
+        } catch (err) {
+          console.error('No se pudo enviar el video de bienvenida:', err.message);
+        }
+      }
+      return;
+    }
 
     let answer;
     try {
