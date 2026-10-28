@@ -3,10 +3,11 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { buildSystemPrompt } = require('./systemPrompt');
 
-function createAiClient(env) {
+function createAiClient(env, { hasPriceImage = false } = {}) {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
   const systemPrompt = buildSystemPrompt({
+    hasPriceImage,
     dosisConfirmada: env.DOSIS_CONFIRMADA === 'true',
     dosisTexto: env.DOSIS_TEXTO || '2 cápsulas al día',
     productUrl: env.PRODUCT_URL || '',

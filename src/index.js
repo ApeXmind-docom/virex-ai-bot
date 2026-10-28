@@ -1,6 +1,7 @@
 'use strict';
 
 require('dotenv').config();
+const fs = require('node:fs');
 const http = require('node:http');
 const nodePath = require('node:path');
 
@@ -9,7 +10,14 @@ const { createAiClient } = require('./ai');
 const { createTranscriber } = require('./transcribe');
 const { waitLikeHuman } = require('./humanize');
 const { acquireSingletonLock } = require('./singleton');
-const { pickScriptedReply } = require('./flow');
+const {
+  pickScriptedReply,
+  pickPriceImageReply,
+  splitPriceMarker,
+  buildPriceFallback,
+  PRICE_IMAGE_NOTE,
+  PRICE_CAPTION,
+} = require('./flow');
 const { renderPanel, renderLoginPage } = require('./admin');
 const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
@@ -29,6 +37,17 @@ const HISTORY_WINDOW = Number(env.HISTORY_WINDOW || 10);
 const DB_PATH = env.DB_PATH || './data/virex-ai.db';
 const BAILEYS_AUTH_PATH = env.BAILEYS_AUTH_PATH || './data/baileys-auth';
 const VIDEO_URL = env.VIREX_VIDEO_URL || '';
+const PRICE_IMAGE_PATH = env.PRICE_IMAGE_PATH || nodePath.join(__dirname, 'assets', 'oferta-virex.jpg');
+
+/** Imagen de la oferta con los precios; null si no está (el bot cae a texto). */
+function loadPriceImage() {
+  try {
+    return fs.readFileSync(PRICE_IMAGE_PATH);
+  } catch (err) {
+    console.warn(`No se pudo leer la imagen de precios (${PRICE_IMAGE_PATH}): ${err.message}. Se responderá con texto.`);
+    return null;
+  }
+}
 
 async function main() {
   if (!env.ANTHROPIC_API_KEY) {
@@ -37,8 +56,25 @@ async function main() {
   }
 
   const db = initStore(DB_PATH);
-  const ai = createAiClient(env);
+  const priceImage = loadPriceImage();
+  const ai = createAiClient(env, { hasPriceImage: Boolean(priceImage) });
   const transcriber = createTranscriber(env);
+
+  const priceFallback = buildPriceFallback({
+    price1: env.PRICE_1_BOTTLE || '$130.000',
+    price2: env.PRICE_2_BOTTLES || '$230.000',
+    price3: env.PRICE_3_BOTTLES || '$300.000',
+  });
+
+  /** Manda la imagen de la oferta con el texto como pie; si falla, manda los precios en texto. */
+  async function sendPriceImage(sock, phone, caption) {
+    try {
+      await sock.sendMessage(phone, { image: priceImage, caption });
+    } catch (err) {
+      console.error('No se pudo enviar la imagen de precios:', err.message);
+      await sock.sendMessage(phone, { text: priceFallback });
+    }
+  }
 
   async function onMessage(phone, text, sock) {
     // --- Tope diario global: se revisa ANTES de gastar nada ---
@@ -78,6 +114,16 @@ async function main() {
       return;
     }
 
+    // --- Pidió precio: se manda la imagen de la oferta, sin gastar una llamada a la IA ---
+    const priceReply = pickPriceImageReply(history, text, { hasPriceImage: Boolean(priceImage) });
+    if (priceReply) {
+      saveMessage(db, phone, 'user', text);
+      saveMessage(db, phone, 'assistant', `${PRICE_IMAGE_NOTE}\n${priceReply.caption}`);
+      await waitLikeHuman(sock, phone, priceReply.caption);
+      await sendPriceImage(sock, phone, priceReply.caption);
+      return;
+    }
+
     let answer;
     try {
       answer = await ai.reply(history, text);
@@ -86,12 +132,24 @@ async function main() {
       answer = 'Se me cruzaron los cables un segundo — ¿me lo puedes repetir?';
     }
 
+    // La IA escribe [[PRECIOS]] cuando iba a dar los precios: se manda la imagen en su lugar.
+    const { text: cleanAnswer, sendImage } = splitPriceMarker(answer);
+
     incrementDailyUsage(db);
     saveMessage(db, phone, 'user', text);
-    saveMessage(db, phone, 'assistant', answer);
 
-    await waitLikeHuman(sock, phone, answer);
-    await sock.sendMessage(phone, { text: answer });
+    if (sendImage && priceImage) {
+      const caption = cleanAnswer || PRICE_CAPTION;
+      saveMessage(db, phone, 'assistant', `${PRICE_IMAGE_NOTE}\n${caption}`);
+      await waitLikeHuman(sock, phone, caption);
+      await sendPriceImage(sock, phone, caption);
+      return;
+    }
+
+    const finalAnswer = cleanAnswer || (sendImage ? priceFallback : answer);
+    saveMessage(db, phone, 'assistant', finalAnswer);
+    await waitLikeHuman(sock, phone, finalAnswer);
+    await sock.sendMessage(phone, { text: finalAnswer });
   }
 
   // Los clientes mandan ráfagas ("quiero el producto" + "mami"). Se esperan

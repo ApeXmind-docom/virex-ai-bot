@@ -105,4 +105,68 @@ function pickScriptedReply(history, text, { hasVideo }) {
   return null;
 }
 
-module.exports = { pickScriptedReply, normalizeChoice, wantsMenu, MENU_TEXT };
+/**
+ * Precios: cuando el cliente pide el precio se manda la imagen de la oferta
+ * (src/assets/oferta-virex.jpg) en vez de escribir los tres precios.
+ *
+ * Dos caminos hacia la misma imagen:
+ *  1. Determinista: el mensaje pide precio (wantsPrice) → imagen sin gastar IA.
+ *  2. La IA escribe PRICE_MARKER cuando iba a dar los precios (p. ej. el
+ *     cliente dijo "sí" a "¿le cuento los precios?") → splitPriceMarker.
+ */
+const PRICE_MARKER = '[[PRECIOS]]';
+const PRICE_IMAGE_NOTE = '[Imagen de la oferta enviada con los precios de 1, 2 y 3 frascos]';
+const PRICE_CAPTION =
+  'Con gusto 😊 Aquí le comparto la oferta con los tres precios. El envío es gratis y puede pagar al recibir 🚚 ¿Cuál presentación le llama más la atención?';
+
+const PRICE_ASK =
+  /\b(precios?|cu[aá]nto\s+(cuesta|cuestan|vale|valen|sale|salen|cobran|es|me\s+cuesta)|valor(es)?|costo|cu[aá]nto\s+por)\b/i;
+// "está caro", "hay descuento": es una objeción, no una petición de precio.
+const PRICE_OBJECTION = /\b(caro|cara|costos[oa]|muy\s+alto|elevado|barato|rebaja|descuento)\b/i;
+// Ya eligió presentación o quiere pedir: la compra tiene prioridad sobre la imagen.
+const PRICE_CHOSEN =
+  /\b(me\s+llevo|lo\s+compro|los\s+compro|voy\s+a\s+(pedir|comprar)|quiero\s+(pedir|comprar|hacer\s+(el|mi)\s+pedido)|c[oó]mo\s+(hago|pido|compro)|d[oó]nde\s+(lo\s+)?compro|quiero\s+(los\s+|las\s+)?(1|2|3|un|una|uno|dos|tres)\b)/i;
+
+function wantsPrice(text) {
+  const t = String(text || '');
+  return PRICE_ASK.test(t) && !PRICE_OBJECTION.test(t) && !PRICE_CHOSEN.test(t);
+}
+
+/** True si en los últimos mensajes ya se mandó la imagen (para no repetirla). */
+function priceImageAlreadySent(history) {
+  return history.slice(-6).some((m) => m.role === 'assistant' && m.content.includes(PRICE_IMAGE_NOTE));
+}
+
+/**
+ * @returns {{caption:string}|null}  null = no mandar la imagen.
+ */
+function pickPriceImageReply(history, text, { hasPriceImage }) {
+  if (!hasPriceImage || !wantsPrice(text) || priceImageAlreadySent(history)) return null;
+  return { caption: PRICE_CAPTION };
+}
+
+/** Separa el marcador que escribe la IA del texto que sí se le muestra al cliente. */
+function splitPriceMarker(answer) {
+  const text = String(answer || '');
+  if (!text.includes(PRICE_MARKER)) return { text: text.trim(), sendImage: false };
+  return { text: text.split(PRICE_MARKER).join('').trim(), sendImage: true };
+}
+
+/** Respaldo en texto si la imagen no existe o WhatsApp no la pudo enviar. */
+function buildPriceFallback({ price1, price2, price3 }) {
+  return `Tenemos 1 frasco por ${price1}, 2 por ${price2} y el programa de 3 frascos por ${price3}. El envío es gratis y puede pagar contra entrega 🚚 ¿Cuál presentación le llama más la atención?`;
+}
+
+module.exports = {
+  pickScriptedReply,
+  normalizeChoice,
+  wantsMenu,
+  MENU_TEXT,
+  PRICE_MARKER,
+  PRICE_IMAGE_NOTE,
+  PRICE_CAPTION,
+  wantsPrice,
+  pickPriceImageReply,
+  splitPriceMarker,
+  buildPriceFallback,
+};

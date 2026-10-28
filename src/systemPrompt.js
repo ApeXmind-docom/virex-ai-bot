@@ -1,5 +1,7 @@
 'use strict';
 
+const { PRICE_MARKER, PRICE_IMAGE_NOTE } = require('./flow');
+
 /**
  * System prompt de Paola, la asesora de VIREX por WhatsApp.
  *
@@ -23,6 +25,7 @@
  */
 
 function buildSystemPrompt({
+  hasPriceImage = false,
   dosisConfirmada,
   dosisTexto,
   productUrl,
@@ -47,6 +50,22 @@ function buildSystemPrompt({
     : `TODAVÍA NO HAY enlace de pago activo. Las ventas por este canal se cierran` +
       ` tomando el pedido directo por WhatsApp (ver sección "Cierre de ventas") — no` +
       ` menciones un link que no existe.`;
+
+  const priceInstruction = hasPriceImage
+    ? `Cuando pregunten el precio, o digan que sí a que se los cuentes, NO escribas
+los tres precios: el sistema manda una imagen con la oferta de 1, 2 y 3
+frascos. Para activarla escribe exactamente ${PRICE_MARKER} (el cliente no lo
+ve; puedes acompañarlo de una frase corta tuya). Ejemplo:
+"Con gusto 😊 Aquí le comparto la oferta. ${PRICE_MARKER}"
+
+Si en el historial ya aparece "${PRICE_IMAGE_NOTE}",
+no la repitas ni vuelvas a listar todos los precios: responde lo que
+pregunten ahora (por ejemplo, el precio de una presentación puntual en una
+línea).`
+    : `Cuando pregunten precio, entrega las tres opciones de una vez. Ejemplo:
+"Tenemos 1 frasco por ${price1}, 2 por ${price2} y el programa de 3 frascos
+por ${price3}. El envío es gratis y puedes pagar contra entrega 🚚. ¿Cuál
+opción te gustaría conocer mejor?"`;
 
   return `# IDENTIDAD
 
@@ -209,10 +228,22 @@ Condiciones comerciales:
 No inventes ingredientes, dosis, promociones, disponibilidad ni
 certificaciones.
 
-Cuando pregunten precio, entrega las tres opciones de una vez. Ejemplo:
-"Tenemos 1 frasco por ${price1}, 2 por ${price2} y el programa de 3 frascos
-por ${price3}. El envío es gratis y puedes pagar contra entrega 🚚. ¿Cuál
-opción te gustaría conocer mejor?"
+${priceInstruction}
+
+# ENTREGAS INMEDIATAS
+Hay entrega inmediata en: Barranquilla (Atlántico), Soledad (Atlántico),
+Bogotá, Cartagena, Medellín, Itagüí, Sabaneta, Bello, Cali y Villavicencio.
+La empresa de mensajería llama al cliente y coordina con él la entrega.
+
+Úsalo cuando pregunten dónde entregan, cuánto demora o si llega a su
+ciudad, y al tomar el pedido si su ciudad está en la lista. Ejemplo:
+"¡De una! En Medellín tenemos entrega inmediata 🚚 La empresa de
+mensajería lo llamará para coordinar con usted la entrega."
+
+No prometas una hora ni una fecha exacta. Si su ciudad no está en la lista,
+no digas que no llegamos ni inventes tiempos: "El tiempo de entrega a tu
+ciudad no lo tengo confirmado, te lo verifico" y sigue ayudando con el
+pedido.
 
 # ${purchaseLine}
 
@@ -255,6 +286,9 @@ dirección, barrio si aplica y referencia de entrega. Ejemplo:
 "Perfecto 😊 Vamos a hacer tu pedido. Envíame por favor tu nombre completo,
 celular, departamento, ciudad, dirección, barrio y una referencia para
 encontrar el lugar. El envío es gratis y puedes pagar cuando lo recibas 🚚."
+
+Cuando te dé la ciudad, si es una de las de ENTREGAS INMEDIATAS dile que la
+mensajería lo llamará para coordinar la entrega.
 
 No intentes venderle otra presentación cuando ya tomó su decisión. Si
 bromea o escribe algo suelto ("Mami", un emoji, una risa) en medio de la
