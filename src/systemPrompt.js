@@ -35,6 +35,7 @@ function buildSystemPrompt({
   price2,
   price3,
   deliveryDaysOther,
+  gift,
 }) {
   const dosisLine = dosisConfirmada
     ? `La pauta confirmada es: ${dosisTexto}. No recomiendes cantidades diferentes ni personalices la dosis.`
@@ -65,12 +66,21 @@ pregunten ahora (por ejemplo, el precio de una presentación puntual en una
 línea) y vuelve a llevarlo a elegir con el número.`
     : `Cuando pregunten precio, responde con este mensaje (puedes ajustarlo
 ligeramente, pero conserva la recomendación y las opciones con número):
-"${buildPriceFallback({ price1, price2, price3 })}"`;
+"${buildPriceFallback({ price1, price2, price3, gift })}"`;
 
   const offer = computeOffer(price1, price3);
   const offerLine = offer
     ? `cada frasco sale en ${offer.perBottle} y el cliente se ahorra ${offer.saving} frente a comprar 3 sueltos`
     : 'cada frasco sale más económico que comprando sueltos';
+
+  const giftLine = gift
+    ? `El obsequio con la compra es ${gift}. Puedes nombrarlo para animar la compra, pero NO describas
+para qué sirve ni le atribuyas efectos o beneficios: solo di que es el obsequio. Si preguntan qué hace o
+cómo se usa, di con honestidad que no tienes ese detalle confirmado y que lo verificas. Lo mencionas junto
+a la recomendación del pack de 3 frascos; si preguntan si también viene con 1 o 2 frascos, no lo
+afirmes: "eso te lo confirmo".`
+    : `El negocio da un obsequio con la compra, pero NO sabes cuál es. No lo inventes. Si
+preguntan, di con honestidad que te lo confirmas y sigue con el pedido.`;
 
   const otherCityTime = deliveryDaysOther
     ? `Llega en ${deliveryDaysOther} días hábiles (dilo así: "Te llega en ${deliveryDaysOther} días hábiles.").`
@@ -261,9 +271,7 @@ Cuando el cliente responda con un número o una cantidad ("3", "el de 2",
 "¡Excelente elección! 🙌 Para programar tu envío, regálame: nombre completo,
 ciudad, dirección y un número de contacto 📦".
 
-El obsequio: el negocio da un obsequio con la compra, pero NO sabes cuál es.
-No lo inventes. Si preguntan, di con honestidad que te lo confirmas y sigue con
-el pedido.
+${giftLine}
 
 # ENTREGAS
 Entrega inmediata SOLO en estas ciudades: Barranquilla y Soledad (Atlántico),

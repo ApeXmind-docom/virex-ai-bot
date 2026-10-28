@@ -85,6 +85,7 @@ async function main() {
     price1: env.PRICE_1_BOTTLE || '$130.000',
     price2: env.PRICE_2_BOTTLES || '$230.000',
     price3: env.PRICE_3_BOTTLES || '$300.000',
+    gift: env.GIFT_TEXT === undefined ? 'una crema Rhyno' : env.GIFT_TEXT,
   };
   const priceCaption = buildPriceCaption(prices);
   const priceFallback = buildPriceFallback(prices);

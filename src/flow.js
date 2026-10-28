@@ -121,13 +121,13 @@ function computeOffer(price1, price3) {
 }
 
 /** Texto que acompaña la imagen de la oferta: recomienda el pack de 3 y pide solo un número. */
-function buildPriceCaption({ price1, price3 }) {
+function buildPriceCaption({ price1, price3, gift }) {
   const offer = computeOffer(price1, price3);
   const detail = offer
     ? `cada uno te queda en ${offer.perBottle} (te ahorras ${offer.saving})`
     : 'cada frasco te sale más económico';
   return `Te recomiendo el de 3 frascos: te alcanza para unos 3 meses y ${detail} 💪
-Además te llega con obsequio, envío gratis y pagas al recibir en tu casa 🚚
+Además te llega ${gift ? `de obsequio ${gift} 🎁, ` : 'con obsequio, '}envío gratis y pagas al recibir en tu casa 🚚
 
 ¿Cuál te separo? Respóndeme solo con el número 👇
 1️⃣ 1 frasco
@@ -169,10 +169,10 @@ function splitPriceMarker(answer) {
 }
 
 /** Respaldo en texto si la imagen no existe o WhatsApp no la pudo enviar. */
-function buildPriceFallback({ price1, price2, price3 }) {
+function buildPriceFallback({ price1, price2, price3, gift }) {
   return `Tenemos 1 frasco por ${price1}, 2 por ${price2} y el programa de 3 frascos por ${price3}.
 
-${buildPriceCaption({ price1, price3 })}`;
+${buildPriceCaption({ price1, price3, gift })}`;
 }
 
 /**
