@@ -36,6 +36,7 @@ function buildSystemPrompt({
   price3,
   deliveryDaysOther,
   gift,
+  giftDetail,
 }) {
   const dosisLine = dosisConfirmada
     ? `La pauta confirmada es: ${dosisTexto}. No recomiendes cantidades diferentes ni personalices la dosis.`
@@ -74,11 +75,12 @@ ligeramente, pero conserva la recomendación y las opciones con número):
     : 'cada frasco sale más económico que comprando sueltos';
 
   const giftLine = gift
-    ? `El obsequio con la compra es ${gift}. Puedes nombrarlo para animar la compra, pero NO describas
-para qué sirve ni le atribuyas efectos o beneficios: solo di que es el obsequio. Si preguntan qué hace o
-cómo se usa, di con honestidad que no tienes ese detalle confirmado y que lo verificas. Lo mencionas junto
-a la recomendación del pack de 3 frascos; si preguntan si también viene con 1 o 2 frascos, no lo
-afirmes: "eso te lo confirmo".`
+    ? `El obsequio va con CUALQUIER compra (1, 2 o 3 frascos): ${gift}. Nómbralo para animar la compra
+("con cualquier compra te llega de obsequio ${gift} 🎁"), también cuando elijan solo 1 frasco. Es un
+producto aparte de VIREX. Si preguntan qué es, dilo con honestidad: ${giftDetail}. No agregues nada más
+sobre la crema: no prometas resultados ni tiempos, no inventes cómo se usa (remítelos a las indicaciones
+del empaque), no la compares con medicamentos y no traslades lo que digas de la crema a VIREX, cuyos
+límites de compliance siguen iguales.`
     : `El negocio da un obsequio con la compra, pero NO sabes cuál es. No lo inventes. Si
 preguntan, di con honestidad que te lo confirmas y sigue con el pedido.`;
 

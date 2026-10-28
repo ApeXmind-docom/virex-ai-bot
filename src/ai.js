@@ -37,6 +37,7 @@ function createAiClient(env, { hasPriceImage = false } = {}) {
     price3: env.PRICE_3_BOTTLES || '$300.000',
     deliveryDaysOther: env.DELIVERY_DAYS_OTHER_CITIES || '',
     gift: env.GIFT_TEXT === undefined ? 'una crema Rhyno' : env.GIFT_TEXT,
+    giftDetail: env.GIFT_DETAIL || 'es una crema retardante',
   });
 
   /**

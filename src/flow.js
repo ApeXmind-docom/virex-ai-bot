@@ -127,7 +127,7 @@ function buildPriceCaption({ price1, price3, gift }) {
     ? `cada uno te queda en ${offer.perBottle} (te ahorras ${offer.saving})`
     : 'cada frasco te sale más económico';
   return `Te recomiendo el de 3 frascos: te alcanza para unos 3 meses y ${detail} 💪
-Además te llega ${gift ? `de obsequio ${gift} 🎁, ` : 'con obsequio, '}envío gratis y pagas al recibir en tu casa 🚚
+Y con cualquier compra te llega ${gift ? `de obsequio ${gift} 🎁` : 'un obsequio 🎁'}, envío gratis y pagas al recibir en tu casa 🚚
 
 ¿Cuál te separo? Respóndeme solo con el número 👇
 1️⃣ 1 frasco
