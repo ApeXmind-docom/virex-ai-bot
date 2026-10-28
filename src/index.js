@@ -36,8 +36,19 @@ const MAX_USER_MESSAGES_PER_HOUR = Number(env.MAX_USER_MESSAGES_PER_HOUR || 12);
 const HISTORY_WINDOW = Number(env.HISTORY_WINDOW || 10);
 const DB_PATH = env.DB_PATH || './data/virex-ai.db';
 const BAILEYS_AUTH_PATH = env.BAILEYS_AUTH_PATH || './data/baileys-auth';
-const VIDEO_URL = env.VIREX_VIDEO_URL || '';
 const PRICE_IMAGE_PATH = env.PRICE_IMAGE_PATH || nodePath.join(__dirname, 'assets', 'oferta-virex.jpg');
+const WELCOME_VIDEO_PATH = nodePath.join(__dirname, 'assets', 'bienvenida.mp4');
+const WELCOME_VIDEO_CAPTION = '🎥 Un video corto para que conozca VIREX Evolution 😊';
+
+/**
+ * Video corto del primer contacto: una URL pública (VIREX_VIDEO_URL) o el
+ * archivo src/assets/bienvenida.mp4. null = no hay video y se omite.
+ */
+function resolveWelcomeVideo() {
+  if (env.VIREX_VIDEO_URL) return { url: env.VIREX_VIDEO_URL };
+  if (fs.existsSync(WELCOME_VIDEO_PATH)) return { url: WELCOME_VIDEO_PATH };
+  return null;
+}
 
 /** Imagen de la oferta con los precios; null si no está (el bot cae a texto). */
 function loadPriceImage() {
@@ -56,6 +67,10 @@ async function main() {
   }
 
   const db = initStore(DB_PATH);
+  const welcomeVideo = resolveWelcomeVideo();
+  if (!welcomeVideo) {
+    console.warn('Sin video de bienvenida (ni VIREX_VIDEO_URL ni src/assets/bienvenida.mp4): el primer contacto va solo con el saludo.');
+  }
   const priceImage = loadPriceImage();
   const ai = createAiClient(env, { hasPriceImage: Boolean(priceImage) });
   const transcriber = createTranscriber(env);
@@ -73,6 +88,15 @@ async function main() {
     } catch (err) {
       console.error('No se pudo enviar la imagen de precios:', err.message);
       await sock.sendMessage(phone, { text: priceFallback });
+    }
+  }
+
+  /** Video corto apenas la persona escribe por primera vez; si falla, el saludo sigue igual. */
+  async function sendWelcomeVideo(sock, phone) {
+    try {
+      await sock.sendMessage(phone, { video: welcomeVideo, mimetype: 'video/mp4', caption: WELCOME_VIDEO_CAPTION });
+    } catch (err) {
+      console.error('No se pudo enviar el video de bienvenida:', err.message);
     }
   }
 
@@ -97,20 +121,17 @@ async function main() {
 
     const history = getHistory(db, phone, HISTORY_WINDOW);
 
-    const scripted = pickScriptedReply(history, text, { hasVideo: Boolean(VIDEO_URL) });
+    // --- Primer contacto: el video sale de inmediato, antes de cualquier respuesta ---
+    if (history.length === 0 && welcomeVideo) {
+      await sendWelcomeVideo(sock, phone);
+    }
+
+    const scripted = pickScriptedReply(history, text);
     if (scripted) {
-      const sent = scripted.videoCaption ? `${scripted.text}\n${scripted.videoCaption}` : scripted.text;
       saveMessage(db, phone, 'user', text);
-      saveMessage(db, phone, 'assistant', sent);
+      saveMessage(db, phone, 'assistant', scripted.text);
       await waitLikeHuman(sock, phone, scripted.text);
       await sock.sendMessage(phone, { text: scripted.text });
-      if (scripted.videoCaption) {
-        try {
-          await sock.sendMessage(phone, { video: { url: VIDEO_URL }, caption: scripted.videoCaption });
-        } catch (err) {
-          console.error('No se pudo enviar el video de bienvenida:', err.message);
-        }
-      }
       return;
     }
 

@@ -1,9 +1,10 @@
 'use strict';
 
 /**
- * Guion de bienvenida: menú de 4 opciones + respuesta fija por opción (con
- * video opcional). Es determinista a propósito: no gasta llamadas a la IA y
- * el texto sale siempre igual.
+ * Guion de bienvenida: menú de 4 opciones + respuesta fija por opción. Es
+ * determinista a propósito: no gasta llamadas a la IA y el texto sale
+ * siempre igual. (El video corto de bienvenida se manda aparte, en el
+ * primer contacto, desde index.js.)
  *
  * Los textos NO prometen efectos médicos ni sexuales (próstata, erección,
  * duración, control urinario): eso va contra el límite de compliance del
@@ -57,9 +58,7 @@ ${DISCLAIMER}`,
 ${DISCLAIMER}`,
 };
 
-const VIDEO_CAPTION =
-  '🎥 Le comparto un video para que conozca mejor VIREX Evolution. Cuando lo vea, ¿le cuento cómo se usa y los precios?';
-const NO_VIDEO_FOLLOWUP = '¿Le cuento cómo se usa y los precios?';
+const FOLLOWUP = '¿Le cuento cómo se usa y los precios?';
 
 const BUY_INTENT = /(compr|pedir|pedido|kiero|quiero (el|los|las|un|una|uno|1|2|3)|precio|cu[aá]nto|cuesta|contra ?entrega)/i;
 const GREETING = /\b(hola|buen[oa]s|info|informaci[oó]n|me interesa|cu[eé]ntame|saludos|ola)/i;
@@ -84,21 +83,18 @@ function normalizeChoice(text) {
 /**
  * @param {{role:string, content:string}[]} history  Historial previo, sin el mensaje actual.
  * @param {string} text  Mensaje actual del cliente.
- * @param {{hasVideo:boolean}} opts
- * @returns {{text:string, videoCaption:string|null}|null}  null = que responda la IA.
+ * @returns {{text:string}|null}  null = que responda la IA.
  */
-function pickScriptedReply(history, text, { hasVideo }) {
+function pickScriptedReply(history, text) {
   if (history.length === 0 && wantsMenu(text)) {
-    return { text: MENU_TEXT, videoCaption: null };
+    return { text: MENU_TEXT };
   }
 
   const last = history[history.length - 1];
   if (last && last.role === 'assistant' && last.content.includes(MENU_MARKER)) {
     const choice = normalizeChoice(text);
     if (choice) {
-      return hasVideo
-        ? { text: OPTION_REPLIES[choice], videoCaption: VIDEO_CAPTION }
-        : { text: `${OPTION_REPLIES[choice]}\n\n${NO_VIDEO_FOLLOWUP}`, videoCaption: null };
+      return { text: `${OPTION_REPLIES[choice]}\n\n${FOLLOWUP}` };
     }
   }
 
