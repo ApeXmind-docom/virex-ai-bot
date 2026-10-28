@@ -12,12 +12,16 @@ const { waitLikeHuman } = require('./humanize');
 const { acquireSingletonLock } = require('./singleton');
 const {
   pickScriptedReply,
+  pickOrderReply,
   pickPriceImageReply,
   splitPriceMarker,
+  buildPriceCaption,
   buildPriceFallback,
+  isOptOut,
   PRICE_IMAGE_NOTE,
-  PRICE_CAPTION,
 } = require('./flow');
+const { scheduleFollowups, runDueFollowups } = require('./followups');
+const { getState } = require('./state');
 const { renderPanel, renderLoginPage } = require('./admin');
 const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
@@ -27,6 +31,8 @@ const {
   isDailyCapReached,
   incrementDailyUsage,
   isUserRateLimited,
+  cancelFollowups,
+  setOptOut,
 } = require('./store');
 
 const env = process.env;
@@ -38,7 +44,7 @@ const DB_PATH = env.DB_PATH || './data/virex-ai.db';
 const BAILEYS_AUTH_PATH = env.BAILEYS_AUTH_PATH || './data/baileys-auth';
 const PRICE_IMAGE_PATH = env.PRICE_IMAGE_PATH || nodePath.join(__dirname, 'assets', 'oferta-virex.jpg');
 const WELCOME_VIDEO_PATH = nodePath.join(__dirname, 'assets', 'bienvenida.mp4');
-const WELCOME_VIDEO_CAPTION = '🎥 Un video corto para que conozca VIREX Evolution 😊';
+const WELCOME_VIDEO_CAPTION = '🎥 Un video corto para que conozcas VIREX Evolution 😊';
 
 /**
  * Video corto del primer contacto: una URL pública (VIREX_VIDEO_URL) o el
@@ -75,11 +81,16 @@ async function main() {
   const ai = createAiClient(env, { hasPriceImage: Boolean(priceImage) });
   const transcriber = createTranscriber(env);
 
-  const priceFallback = buildPriceFallback({
+  const prices = {
     price1: env.PRICE_1_BOTTLE || '$130.000',
     price2: env.PRICE_2_BOTTLES || '$230.000',
     price3: env.PRICE_3_BOTTLES || '$300.000',
-  });
+    gift: env.GIFT_TEXT === undefined ? 'una crema Rhyno' : env.GIFT_TEXT,
+  };
+  const priceCaption = buildPriceCaption(prices);
+  const priceFallback = buildPriceFallback(prices);
+  const followupsEnabled = env.FOLLOWUPS_ENABLED !== 'false';
+  let currentSock = null; // último socket de WhatsApp, para los seguimientos
 
   /** Manda la imagen de la oferta con el texto como pie; si falla, manda los precios en texto. */
   async function sendPriceImage(sock, phone, caption) {
@@ -101,6 +112,9 @@ async function main() {
   }
 
   async function onMessage(phone, text, sock) {
+    // Si pide que no le escriban, no se le manda ningún seguimiento.
+    if (isOptOut(text)) setOptOut(db, phone);
+
     // --- Tope diario global: se revisa ANTES de gastar nada ---
     if (isDailyCapReached(db, MAX_DAILY_API_CALLS)) {
       console.warn(`Tope diario de ${MAX_DAILY_API_CALLS} llamadas alcanzado. Ignorando mensaje de ${phone}.`);
@@ -135,13 +149,27 @@ async function main() {
       return;
     }
 
+    // --- Eligió presentación tras la oferta ("3", "el de 2"): se piden los datos de envío ---
+    const orderReply = pickOrderReply(history, text);
+    if (orderReply) {
+      saveMessage(db, phone, 'user', text);
+      saveMessage(db, phone, 'assistant', orderReply.text);
+      await waitLikeHuman(sock, phone, orderReply.text);
+      await sock.sendMessage(phone, { text: orderReply.text });
+      return;
+    }
+
     // --- Pidió precio: se manda la imagen de la oferta, sin gastar una llamada a la IA ---
-    const priceReply = pickPriceImageReply(history, text, { hasPriceImage: Boolean(priceImage) });
+    const priceReply = pickPriceImageReply(history, text, {
+      hasPriceImage: Boolean(priceImage),
+      caption: priceCaption,
+    });
     if (priceReply) {
       saveMessage(db, phone, 'user', text);
       saveMessage(db, phone, 'assistant', `${PRICE_IMAGE_NOTE}\n${priceReply.caption}`);
       await waitLikeHuman(sock, phone, priceReply.caption);
       await sendPriceImage(sock, phone, priceReply.caption);
+      scheduleFollowups(db, phone, { enabled: followupsEnabled });
       return;
     }
 
@@ -160,10 +188,16 @@ async function main() {
     saveMessage(db, phone, 'user', text);
 
     if (sendImage && priceImage) {
-      const caption = cleanAnswer || PRICE_CAPTION;
-      saveMessage(db, phone, 'assistant', `${PRICE_IMAGE_NOTE}\n${caption}`);
-      await waitLikeHuman(sock, phone, caption);
-      await sendPriceImage(sock, phone, caption);
+      // Si la IA escribió algo además del marcador, va como mensaje aparte; el pie de la imagen es siempre la recomendación.
+      if (cleanAnswer) {
+        saveMessage(db, phone, 'assistant', cleanAnswer);
+        await waitLikeHuman(sock, phone, cleanAnswer);
+        await sock.sendMessage(phone, { text: cleanAnswer });
+      }
+      saveMessage(db, phone, 'assistant', `${PRICE_IMAGE_NOTE}\n${priceCaption}`);
+      await waitLikeHuman(sock, phone, priceCaption);
+      await sendPriceImage(sock, phone, priceCaption);
+      scheduleFollowups(db, phone, { enabled: followupsEnabled });
       return;
     }
 
@@ -180,6 +214,8 @@ async function main() {
   const inFlightByPhone = new Map();
 
   function enqueueMessage(phone, text, sock) {
+    // Apenas el cliente escribe se cancelan sus seguimientos pendientes.
+    cancelFollowups(db, phone);
     const entry = pendingByPhone.get(phone) || { texts: [] };
     entry.texts.push(text);
     entry.sock = sock;
@@ -305,8 +341,30 @@ async function main() {
   // respondiendo mientras espera el candado.
   const lockPath = nodePath.join(nodePath.dirname(BAILEYS_AUTH_PATH), 'whatsapp.lock');
   acquireSingletonLock(lockPath)
-    .then(() => startWhatsApp(BAILEYS_AUTH_PATH, enqueueMessage, transcriber))
+    .then(() =>
+      startWhatsApp(BAILEYS_AUTH_PATH, enqueueMessage, transcriber, (sock) => {
+        currentSock = sock;
+      })
+    )
     .catch((err) => console.error('Error fatal conectando WhatsApp:', err));
+
+  // --- Seguimientos a clientes que vieron la oferta y dejaron de contestar ---
+  if (followupsEnabled) {
+    let followupsRunning = false;
+    setInterval(async () => {
+      if (followupsRunning || !currentSock || getState().status !== 'connected') return;
+      followupsRunning = true;
+      try {
+        await runDueFollowups({ db, sock: currentSock });
+      } catch (err) {
+        console.error('Error corriendo seguimientos:', err);
+      } finally {
+        followupsRunning = false;
+      }
+    }, 60 * 1000);
+  } else {
+    console.log('Seguimientos automáticos desactivados (FOLLOWUPS_ENABLED=false).');
+  }
 }
 
 main().catch((err) => {

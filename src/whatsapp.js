@@ -22,8 +22,9 @@ const MAX_RESTART_RETRIES = 5;
  * @param {string} authPath  Carpeta persistente donde vive la sesión (disco de Render).
  * @param {(phone:string, text:string) => Promise<void>} onMessage  Handler de mensajes entrantes.
  * @param {{transcribe:Function}|null} transcriber  Transcriptor de notas de voz (Whisper), o null si no está configurado.
+ * @param {(sock:object) => void} [onSocket]  Se llama con cada socket nuevo (también tras reconectar), para mensajes que el bot inicia solo (seguimientos).
  */
-async function startWhatsApp(authPath, onMessage, transcriber) {
+async function startWhatsApp(authPath, onMessage, transcriber, onSocket) {
   const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -41,6 +42,8 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
     logger,
     printQRInTerminal: false,
   });
+
+  if (onSocket) onSocket(sock);
 
   sock.ev.on('creds.update', saveCreds);
 
@@ -85,7 +88,7 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
       if (statusCode === DisconnectReason.restartRequired && restartRetries < MAX_RESTART_RETRIES) {
         restartRetries += 1;
         console.log(`Reinicio requerido por WhatsApp (normal tras vincular). Reconectando ya (${restartRetries}/${MAX_RESTART_RETRIES})...`);
-        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber), 1000);
+        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket), 1000);
         return;
       }
 
@@ -105,7 +108,7 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
         console.log(
           `QR sin escanear (código ${statusCode}). Nuevo QR en ${UNLINKED_RETRY_DELAY_MS / 1000}s (${unlinkedRetries}/${MAX_UNLINKED_RETRIES})...`
         );
-        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber), UNLINKED_RETRY_DELAY_MS);
+        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket), UNLINKED_RETRY_DELAY_MS);
         return;
       }
 
@@ -117,7 +120,7 @@ async function startWhatsApp(authPath, onMessage, transcriber) {
       console.log(
         `Conexión cerrada (código ${statusCode}). Reintentando en ${Math.round(delayMs / 1000)}s (intento ${reconnectAttempts})...`
       );
-      setTimeout(() => startWhatsApp(authPath, onMessage, transcriber), delayMs);
+      setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket), delayMs);
     } else if (connection === 'open') {
       reconnectAttempts = 0; // se reconectó bien, resetea el contador de espera
       unlinkedRetries = 0;

@@ -31,6 +31,21 @@ function initStore(dbPath) {
       window_start INTEGER NOT NULL,
       count INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS followups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone TEXT NOT NULL,
+      step INTEGER NOT NULL,
+      due_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','cancelled','skipped')),
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_followups_due ON followups(status, due_at);
+
+    CREATE TABLE IF NOT EXISTS followup_optout (
+      phone TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   return db;
@@ -91,6 +106,51 @@ function isUserRateLimited(db, phone, maxPerHour) {
 
   db.prepare(`UPDATE user_rate SET count = count + 1 WHERE phone = ?`).run(phone);
   return false;
+}
+
+/** Cancela los seguimientos pendientes de un cliente (porque escribió, o pidió que no le escriban). */
+function cancelFollowups(db, phone) {
+  db.prepare(`UPDATE followups SET status = 'cancelled' WHERE phone = ? AND status = 'pending'`).run(phone);
+}
+
+/** Reemplaza los seguimientos pendientes de un cliente por `plan` = [{step, dueAt}]. */
+function addFollowups(db, phone, plan) {
+  const insert = db.prepare(
+    `INSERT INTO followups (phone, step, due_at, status, created_at) VALUES (?,?,?,'pending',?)`
+  );
+  db.transaction(() => {
+    cancelFollowups(db, phone);
+    const now = Date.now();
+    for (const { step, dueAt } of plan) insert.run(phone, step, dueAt, now);
+  })();
+}
+
+/** Seguimientos pendientes que ya vencieron, del más antiguo al más nuevo. */
+function getDueFollowups(db, now) {
+  return db
+    .prepare(
+      `SELECT id, phone, step, due_at FROM followups
+       WHERE status = 'pending' AND due_at <= ? ORDER BY due_at ASC LIMIT 20`
+    )
+    .all(now);
+}
+
+function isFollowupPending(db, id) {
+  const row = db.prepare(`SELECT status FROM followups WHERE id = ?`).get(id);
+  return Boolean(row) && row.status === 'pending';
+}
+
+function markFollowup(db, id, status) {
+  db.prepare(`UPDATE followups SET status = ? WHERE id = ?`).run(status, id);
+}
+
+function setOptOut(db, phone) {
+  db.prepare(`INSERT OR IGNORE INTO followup_optout (phone, created_at) VALUES (?, ?)`).run(phone, Date.now());
+  cancelFollowups(db, phone);
+}
+
+function isOptedOut(db, phone) {
+  return Boolean(db.prepare(`SELECT 1 FROM followup_optout WHERE phone = ?`).get(phone));
 }
 
 /** Estadísticas para el panel de administración. */
@@ -154,6 +214,13 @@ module.exports = {
   isDailyCapReached,
   incrementDailyUsage,
   isUserRateLimited,
+  cancelFollowups,
+  addFollowups,
+  getDueFollowups,
+  isFollowupPending,
+  markFollowup,
+  setOptOut,
+  isOptedOut,
   getStats,
   listConversations,
   getFullThread,
