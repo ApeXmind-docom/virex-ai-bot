@@ -40,12 +40,12 @@ const STEPS = [
   {
     step: 1,
     maxLateMs: 2 * HOUR_MS,
-    text: `Hola 😊 soy Paola. Cuéntame, ¿hay algo que quieras saber más del producto? Con gusto te ayudo 💛`,
+    text: `Hola bebé 😊 soy Paola. Cuéntame, ¿hay algo que quieras saber más del producto? Con gusto te ayudo 💛`,
   },
   {
     step: 2,
     maxLateMs: 2 * HOUR_MS,
-    text: `¡Hola! 😊 Quedo atenta por si quieres preguntarme algo del producto 💛`,
+    text: `¡Hola amor! 😊 Quedo atenta por si quieres preguntarme algo del producto 💛`,
   },
   {
     step: 3,
