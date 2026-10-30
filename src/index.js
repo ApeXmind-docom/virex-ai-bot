@@ -22,10 +22,13 @@ const {
 } = require('./flow');
 const { scheduleFollowups, runDueFollowups } = require('./followups');
 const { getState } = require('./state');
-const { renderPanel, renderLoginPage } = require('./admin');
+const { renderPanel, renderLoginPage, parseCustomerForm } = require('./admin');
 const { createSession, isValidSession, destroySession, parseCookies, parseFormBody } = require('./sessions');
 const {
   initStore,
+  hasConversation,
+  saveCustomer,
+  deleteCustomer,
   getHistory,
   saveMessage,
   isDailyCapReached,
@@ -342,6 +345,26 @@ async function main() {
       if (path === '/login') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderLoginPage());
+        return;
+      }
+
+      // Clientes que ya compraron: se marcan o se quitan desde el panel.
+      if ((path === '/clientes' || path === '/clientes/eliminar') && req.method === 'POST') {
+        if (!hasValidSession(req)) {
+          res.writeHead(302, { Location: '/login' });
+          res.end();
+          return;
+        }
+        const form = parseCustomerForm(await parseFormBody(req));
+        if (!form || !hasConversation(db, form.phone)) {
+          res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Número no válido.');
+          return;
+        }
+        if (path === '/clientes') saveCustomer(db, form);
+        else deleteCustomer(db, form.phone);
+        res.writeHead(302, { Location: path === '/clientes' ? '/?tab=clientes' : '/?tab=conversaciones&phone=' + encodeURIComponent(form.phone) });
+        res.end();
         return;
       }
 

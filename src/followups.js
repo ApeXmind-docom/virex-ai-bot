@@ -7,6 +7,7 @@ const {
   isFollowupPending,
   markFollowup,
   isOptedOut,
+  isCustomer,
   saveMessage,
 } = require('./store');
 
@@ -87,7 +88,7 @@ function planFollowups(offerAt) {
 
 /** Programa los seguimientos de este cliente (reemplaza los pendientes). */
 function scheduleFollowups(db, phone, { enabled = true, now = Date.now() } = {}) {
-  if (!enabled || isOptedOut(db, phone)) return;
+  if (!enabled || isOptedOut(db, phone) || isCustomer(db, phone)) return;
   addFollowups(db, phone, planFollowups(now));
 }
 
@@ -98,7 +99,7 @@ function scheduleFollowups(db, phone, { enabled = true, now = Date.now() } = {})
 async function runDueFollowups({ db, sock, now = Date.now() }) {
   for (const due of getDueFollowups(db, now)) {
     const def = STEPS.find((s) => s.step === due.step);
-    if (!def || isOptedOut(db, due.phone)) {
+    if (!def || isOptedOut(db, due.phone) || isCustomer(db, due.phone)) {
       markFollowup(db, due.id, 'cancelled');
       continue;
     }
