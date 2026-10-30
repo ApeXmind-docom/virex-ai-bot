@@ -1,7 +1,14 @@
 'use strict';
 
 const state = require('./state');
-const { getStats, listConversations, getFullThread } = require('./store');
+const {
+  getStats,
+  listConversations,
+  getFullThread,
+  listCustomers,
+  getCustomer,
+  getCustomerStats,
+} = require('./store');
 
 function maskPhone(jid) {
   const digits = String(jid).replace(/\D/g, '');
@@ -32,6 +39,38 @@ function formatDateTime(ts) {
   return new Date(ts).toLocaleString('es-CO', {
     day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
   });
+}
+
+const PACK_LABELS = { 1: '1 frasco', 2: '2 frascos', 3: '3 frascos' };
+
+function formatMoney(n) {
+  if (n === null || n === undefined || n === '') return '—';
+  return '$' + Number(n).toLocaleString('es-CO');
+}
+
+/** Número completo (+57…) solo para la pestaña Clientes: ahí sí hay que poder escribirles. */
+function formatPhone(jid) {
+  const digits = String(jid).replace(/\D/g, '');
+  return digits ? '+' + digits : '—';
+}
+
+/**
+ * Valida el formulario de "marcar como cliente". Devuelve los campos limpios
+ * o null si falta el número.
+ */
+function parseCustomerForm(body) {
+  const phone = String(body.phone || '').trim();
+  if (!phone) return null;
+  const pack = Number(body.pack);
+  const amount = Math.round(Number(String(body.amount || '').replace(/[^\d]/g, '')));
+  return {
+    phone,
+    name: String(body.name || '').trim().slice(0, 80),
+    pack: [1, 2, 3].includes(pack) ? pack : null,
+    amount: Number.isFinite(amount) && amount > 0 && amount < 100000000 ? amount : null,
+    city: String(body.city || '').trim().slice(0, 80),
+    notes: String(body.notes || '').trim().slice(0, 500),
+  };
 }
 
 const SHARED_STYLES = `
@@ -72,6 +111,21 @@ const SHARED_STYLES = `
   .msg.user{background:#161616;border:1px solid #2a2a2a}
   .msg.assistant{background:#1a0a09;border:1px solid #3a1512;margin-left:auto}
   .msg .meta{font-family:monospace;font-size:.6875rem;color:#7a7a7a;margin-bottom:.3rem}
+  .form-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin-top:1rem}
+  @media(min-width:640px){.form-grid{grid-template-columns:1fr 1fr}}
+  .form-grid label{display:block;font-family:monospace;font-size:.6875rem;letter-spacing:.06em;
+    text-transform:uppercase;color:#7a7a7a;margin-bottom:.35rem}
+  .form-grid input,.form-grid select,.form-grid textarea{width:100%;background:#050505;
+    border:1px solid #2a2a2a;border-radius:4px;padding:.65rem .8rem;color:#edeae4;font-size:.9rem;font-family:inherit}
+  .form-grid input:focus,.form-grid select:focus,.form-grid textarea:focus{outline:none;border-color:#e01b12}
+  .form-grid .full{grid-column:1/-1}
+  .btn{background:#e01b12;color:#edeae4;border:none;border-radius:4px;padding:.7rem 1.1rem;
+    font-weight:700;font-size:.875rem;cursor:pointer}
+  .btn:hover{background:#ff3b24}
+  .btn.ghost{background:transparent;border:1px solid #2a2a2a;color:#7a7a7a;font-weight:400}
+  .btn.ghost:hover{color:#edeae4;border-color:#3a3a3a}
+  .badge{display:inline-block;font-family:monospace;font-size:.6875rem;letter-spacing:.06em;
+    text-transform:uppercase;color:#1fae5f;border:1px solid #1fae5f;border-radius:99px;padding:.1rem .6rem}
   .empty{color:#7a7a7a;padding:1.5rem;text-align:center;font-size:.875rem}
   .backlink{font-family:monospace;font-size:.75rem;color:#7a7a7a;display:inline-block;margin-bottom:1rem}
   .logout-btn{font-family:monospace;font-size:.75rem;letter-spacing:.05em;color:#7a7a7a;
@@ -91,13 +145,13 @@ const SHARED_STYLES = `
   .login-error{color:#e01b12;font-size:.8125rem;margin-top:1rem;text-align:center}
 `;
 
-function layout({ title, activeTab, statusPill, body }) {
+function layout({ title, activeTab, statusPill, body, refresh = true }) {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="20">
+${refresh ? '<meta http-equiv="refresh" content="20">' : ''}
 <title>${title}</title>
 <style>${SHARED_STYLES}</style>
 </head>
@@ -120,6 +174,7 @@ function layout({ title, activeTab, statusPill, body }) {
   <div class="tabs">
     <a class="tab ${activeTab === 'dashboard' ? 'active' : ''}" href="/">Dashboard</a>
     <a class="tab ${activeTab === 'conversaciones' ? 'active' : ''}" href="/?tab=conversaciones">Conversaciones</a>
+    <a class="tab ${activeTab === 'clientes' ? 'active' : ''}" href="/?tab=clientes">Clientes</a>
   </div>
 
   ${body}
@@ -141,6 +196,7 @@ function statusPillHtml(s) {
 function renderDashboard(db, env) {
   const s = state.getState();
   const stats = getStats(db);
+  const customerStats = getCustomerStats(db);
   const dailyCap = Number(env.MAX_DAILY_API_CALLS || 300);
   const pct = Math.min(100, Math.round((stats.apiCallsToday / dailyCap) * 100));
 
@@ -180,6 +236,8 @@ function renderDashboard(db, env) {
         <div class="stat"><div class="n">${stats.messagesToday}</div><div class="l">Mensajes hoy</div></div>
         <div class="stat"><div class="n">${stats.messagesTotal}</div><div class="l">Mensajes totales</div></div>
         <div class="stat"><div class="n">${dailyCap - stats.apiCallsToday}</div><div class="l">Restantes hoy</div></div>
+        <div class="stat"><div class="n">${customerStats.customers}</div><div class="l">Clientes que compraron</div></div>
+        <div class="stat"><div class="n">${formatMoney(customerStats.salesTotal)}</div><div class="l">Ventas registradas</div></div>
       </div>
     </div>
 
@@ -225,7 +283,7 @@ function renderConversationList(db) {
   });
 }
 
-function renderConversationDetail(db, phone) {
+function renderConversationDetail(db, env, phone) {
   const s = state.getState();
   const thread = getFullThread(db, phone);
 
@@ -238,8 +296,58 @@ function renderConversationDetail(db, phone) {
     )
     .join('');
 
+  const customer = getCustomer(db, phone);
+  const v = (x) => escapeHtml(x === null || x === undefined ? '' : x);
+  const packOptions = [1, 2, 3]
+    .map((n) => `<option value="${n}" ${customer && customer.pack === n ? 'selected' : ''}>${PACK_LABELS[n]}</option>`)
+    .join('');
+  const prices = { 1: env.PRICE_1_BOTTLE || '$130.000', 2: env.PRICE_2_BOTTLES || '$230.000', 3: env.PRICE_3_BOTTLES || '$300.000' };
+  const priceDigits = JSON.stringify(
+    Object.fromEntries(Object.entries(prices).map(([k, val]) => [k, String(val).replace(/\D/g, '')]))
+  ).replace(/</g, '\\u003c');
+
+  const customerCard = `
+    <div class="card">
+      <strong>${customer ? 'Cliente que ya compró' : 'Marcar como cliente'}</strong>
+      ${customer ? '<span class="badge" style="margin-left:.6rem">Compró</span>' : ''}
+      <p style="color:#7a7a7a;font-size:.8125rem;margin:.4rem 0 0">
+        Al guardarlo deja de recibir los mensajes automáticos de seguimiento.
+      </p>
+      <form method="POST" action="/clientes" id="customer-form">
+        <input type="hidden" name="phone" value="${v(phone)}">
+        <div class="form-grid">
+          <div><label for="c-name">Nombre</label><input id="c-name" name="name" maxlength="80" value="${v(customer && customer.name)}"></div>
+          <div><label for="c-city">Ciudad</label><input id="c-city" name="city" maxlength="80" value="${v(customer && customer.city)}"></div>
+          <div><label for="c-pack">Presentación</label>
+            <select id="c-pack" name="pack"><option value="">—</option>${packOptions}</select></div>
+          <div><label for="c-amount">Valor de la venta (COP)</label>
+            <input id="c-amount" name="amount" inputmode="numeric" value="${v(customer && customer.amount)}"></div>
+          <div class="full"><label for="c-notes">Notas</label>
+            <textarea id="c-notes" name="notes" rows="2" maxlength="500">${v(customer && customer.notes)}</textarea></div>
+        </div>
+        <div style="display:flex;gap:.75rem;margin-top:1rem;flex-wrap:wrap">
+          <button type="submit" class="btn">${customer ? 'Guardar cambios' : 'Guardar como cliente'}</button>
+        </div>
+      </form>
+      ${customer ? `<form method="POST" action="/clientes/eliminar" style="margin-top:.75rem"
+          onsubmit="return confirm('¿Quitar a este cliente de la lista de compradores?')">
+          <input type="hidden" name="phone" value="${v(phone)}">
+          <button type="submit" class="btn ghost">Quitar de clientes</button></form>` : ''}
+      <script>
+        (function () {
+          var prices = ${priceDigits};
+          var pack = document.getElementById('c-pack');
+          var amount = document.getElementById('c-amount');
+          pack.addEventListener('change', function () {
+            if (!amount.value && prices[pack.value]) amount.value = prices[pack.value];
+          });
+        })();
+      </script>
+    </div>`;
+
   const body = `
     <a class="backlink" href="/?tab=conversaciones">&larr; Volver a conversaciones</a>
+    ${customerCard}
     <div class="card">
       <strong>Conversación con ${maskPhone(phone)}</strong>
       <div style="margin-top:1rem">${bubbles || '<p class="empty">Sin mensajes.</p>'}</div>
@@ -250,7 +358,49 @@ function renderConversationDetail(db, phone) {
     activeTab: 'conversaciones',
     statusPill: statusPillHtml(s),
     body,
+    refresh: false, // hay un formulario: no se recarga sola para no borrar lo que se está escribiendo
   });
+}
+
+function renderCustomerList(db) {
+  const s = state.getState();
+  const customers = listCustomers(db);
+  const stats = getCustomerStats(db);
+
+  const rows = customers
+    .map(
+      (c) => `<tr class="rowlink" onclick="location.href='/?tab=conversaciones&phone=${encodeURIComponent(c.phone)}'">
+        <td>${c.name ? escapeHtml(c.name) : '<span style="color:#7a7a7a">Sin nombre</span>'}</td>
+        <td>${escapeHtml(formatPhone(c.phone))}</td>
+        <td>${c.city ? escapeHtml(c.city) : '—'}</td>
+        <td>${PACK_LABELS[c.pack] || '—'}</td>
+        <td>${formatMoney(c.amount)}</td>
+        <td style="color:#7a7a7a">${formatDateTime(c.purchased_at)}</td>
+      </tr>`
+    )
+    .join('');
+
+  const body = `
+    <div class="card" style="margin-top:0">
+      <div class="stat-grid">
+        <div class="stat"><div class="n">${stats.customers}</div><div class="l">Clientes que compraron</div></div>
+        <div class="stat"><div class="n">${formatMoney(stats.salesTotal)}</div><div class="l">Ventas registradas</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <strong>Clientes que ya compraron</strong>
+      <p style="color:#7a7a7a;font-size:.8125rem;margin:.4rem 0 0">
+        Para agregar uno, abre su conversación en la pestaña Conversaciones y usa «Marcar como cliente».
+      </p>
+      <div style="overflow-x:auto">
+      <table style="margin-top:.75rem">
+        <thead><tr><th>Nombre</th><th>Número</th><th>Ciudad</th><th>Presentación</th><th>Valor</th><th>Fecha</th></tr></thead>
+        <tbody>${rows || '<tr><td class="empty" colspan="6">Todavía no has marcado clientes.</td></tr>'}</tbody>
+      </table>
+      </div>
+    </div>`;
+
+  return layout({ title: 'IA VIREX — Clientes', activeTab: 'clientes', statusPill: statusPillHtml(s), body });
 }
 
 /** Decide qué vista renderizar según los parámetros de la URL. */
@@ -259,8 +409,9 @@ function renderPanel(db, env, req) {
   const tab = url.searchParams.get('tab');
   const phone = url.searchParams.get('phone');
 
-  if (tab === 'conversaciones' && phone) return renderConversationDetail(db, phone);
+  if (tab === 'conversaciones' && phone) return renderConversationDetail(db, env, phone);
   if (tab === 'conversaciones') return renderConversationList(db);
+  if (tab === 'clientes') return renderCustomerList(db);
   return renderDashboard(db, env);
 }
 
@@ -294,4 +445,4 @@ function renderLoginPage({ error } = {}) {
 </html>`;
 }
 
-module.exports = { renderPanel, renderLoginPage };
+module.exports = { renderPanel, renderLoginPage, parseCustomerForm };

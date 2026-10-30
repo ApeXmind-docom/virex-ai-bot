@@ -46,6 +46,17 @@ function initStore(dbPath) {
       phone TEXT PRIMARY KEY,
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS customers (
+      phone TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      pack INTEGER,
+      amount INTEGER,
+      city TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      purchased_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `);
 
   return db;
@@ -153,6 +164,53 @@ function isOptedOut(db, phone) {
   return Boolean(db.prepare(`SELECT 1 FROM followup_optout WHERE phone = ?`).get(phone));
 }
 
+/** true si ya hay una conversación con este número (solo se marca como cliente a quien escribió). */
+function hasConversation(db, phone) {
+  return Boolean(db.prepare(`SELECT 1 FROM messages WHERE phone = ? LIMIT 1`).get(phone));
+}
+
+/**
+ * Marca (o actualiza) a un cliente que ya compró. Un cliente no recibe más
+ * seguimientos de "¿sigues interesado?", así que también se cancelan los pendientes.
+ */
+function saveCustomer(db, { phone, name, pack, amount, city, notes }) {
+  const now = Date.now();
+  db.transaction(() => {
+    db.prepare(
+      `INSERT INTO customers (phone, name, pack, amount, city, notes, purchased_at, created_at)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON CONFLICT(phone) DO UPDATE SET
+         name = excluded.name, pack = excluded.pack, amount = excluded.amount,
+         city = excluded.city, notes = excluded.notes`
+    ).run(phone, name, pack, amount, city, notes, now, now);
+    cancelFollowups(db, phone);
+  })();
+}
+
+function deleteCustomer(db, phone) {
+  db.prepare(`DELETE FROM customers WHERE phone = ?`).run(phone);
+}
+
+function getCustomer(db, phone) {
+  return db.prepare(`SELECT * FROM customers WHERE phone = ?`).get(phone);
+}
+
+function isCustomer(db, phone) {
+  return Boolean(db.prepare(`SELECT 1 FROM customers WHERE phone = ?`).get(phone));
+}
+
+/** Clientes que ya compraron, del más reciente al más antiguo. */
+function listCustomers(db) {
+  return db.prepare(`SELECT * FROM customers ORDER BY purchased_at DESC`).all();
+}
+
+function getCustomerStats(db) {
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total FROM customers`)
+    .get();
+  return { customers: row.n, salesTotal: row.total };
+}
+
 /** Estadísticas para el panel de administración. */
 function getStats(db) {
   const day = todayKey();
@@ -221,6 +279,13 @@ module.exports = {
   markFollowup,
   setOptOut,
   isOptedOut,
+  hasConversation,
+  saveCustomer,
+  deleteCustomer,
+  getCustomer,
+  isCustomer,
+  listCustomers,
+  getCustomerStats,
   getStats,
   listConversations,
   getFullThread,
