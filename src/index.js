@@ -175,7 +175,7 @@ async function main() {
       await sendWelcomeVideo(sock, phone);
     }
 
-    const scripted = pickScriptedReply(history, text);
+    const scripted = pickScriptedReply(history, text, { hasVideo: Boolean(welcomeVideo) });
     if (scripted) {
       saveMessage(db, phone, 'user', text);
       saveMessage(db, phone, 'assistant', scripted.text);
