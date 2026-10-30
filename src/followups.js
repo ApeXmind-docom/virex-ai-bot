@@ -15,8 +15,8 @@ const {
  * Seguimientos automáticos: si el cliente vio la oferta (imagen de precios) y
  * deja de contestar, Paola le escribe tres veces como máximo:
  *   1. a la media hora: se ofrece a resolver dudas sobre el producto
- *   2. a la hora: lo tranquiliza en una línea (paga al recibir, paquete discreto)
- *   3. al día siguiente a las 10:00 a. m.: un saludo corto, disponible para ayudar
+ *   2. a la hora: un saludo corto, disponible para ayudar (sin "buenos días": puede salir a cualquier hora)
+ *   3. al día siguiente a las 10:00 a. m.: lo tranquiliza en una línea (paga al recibir, paquete discreto)
  * Los tres son cortos y de ayuda, sin presionar la venta ni avisar que "es el último".
  *
  * Reglas para no ser una molestia (ni un riesgo para el número):
@@ -45,13 +45,13 @@ const STEPS = [
   {
     step: 2,
     maxLateMs: 2 * HOUR_MS,
-    text: `Por si te sirve: pagas cuando lo recibes en tu casa y llega en paquete discreto 📦
-¿Te quedó alguna duda? Aquí estoy para ayudarte 🤗`,
+    text: `¡Hola! 😊 Quedo atenta por si quieres preguntarme algo del producto 💛`,
   },
   {
     step: 3,
     maxLateMs: 6 * HOUR_MS,
-    text: `¡Hola! 😊 ¿Cómo amaneciste? Quedo atenta por si quieres preguntarme algo del producto 💛`,
+    text: `Por si te sirve: pagas cuando lo recibes en tu casa y llega en paquete discreto 📦
+¿Te quedó alguna duda? Aquí estoy para ayudarte 🤗`,
   },
 ];
 
