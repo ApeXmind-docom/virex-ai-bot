@@ -14,9 +14,10 @@ const {
 /**
  * Seguimientos automáticos: si el cliente vio la oferta (imagen de precios) y
  * deja de contestar, Paola le escribe tres veces como máximo:
- *   1. a la media hora: pregunta la ciudad (entrega inmediata vs. contra entrega)
- *   2. a la hora: le quita el miedo a comprar (paga al recibir, discreto, original)
- *   3. al día siguiente a las 10:00 a. m.: último empujón
+ *   1. a la media hora: se ofrece a resolver dudas sobre el producto
+ *   2. a la hora: un saludo corto, disponible para ayudar (sin "buenos días": puede salir a cualquier hora)
+ *   3. al día siguiente a las 10:00 a. m.: lo tranquiliza en una línea (paga al recibir, paquete discreto) y menciona el regalo
+ * Los tres son cortos y de ayuda, sin presionar la venta ni avisar que "es el último".
  *
  * Reglas para no ser una molestia (ni un riesgo para el número):
  *  - Cualquier mensaje del cliente cancela los pendientes (ver index.js).
@@ -39,24 +40,19 @@ const STEPS = [
   {
     step: 1,
     maxLateMs: 2 * HOUR_MS,
-    text: `¿Pudiste ver la oferta? 😊
-Cuéntame, ¿en qué ciudad estás? En las principales ciudades tenemos entrega inmediata 🚀 y al resto del país te lo enviamos contra entrega 🚚`,
+    text: `Hola bebé 😊 soy Paola. Cuéntame, ¿hay algo que quieras saber más del producto? Con gusto te ayudo 💛`,
   },
   {
     step: 2,
     maxLateMs: 2 * HOUR_MS,
-    text: `Te cuento algo para que estés tranquilo 🙌
-✅ No pagas nada por adelantado: pagas cuando lo recibes.
-📦 Llega en paquete discreto, nadie sabe qué contiene.
-🔒 Producto 100% original y sellado.
-¿Tienes alguna duda? O si prefieres, empieza con 1 frasco para que lo pruebes 😉`,
+    text: `¡Hola amor! 😊 Quedo atenta por si quieres preguntarme algo del producto 💛`,
   },
   {
     step: 3,
     maxLateMs: 6 * HOUR_MS,
-    text: `¡Hola! 👋 Te escribo por última vez para no molestarte 😊
-La promoción con obsequio y envío gratis sigue disponible para ti.
-¿Te lo enviamos hoy? Solo dime tu nombre y tu ciudad 🚚`,
+    text: `Por si te sirve: pagas cuando lo recibes en tu casa y llega en paquete discreto 📦
+Y si te animas, te voy a enviar un regalo 🎁
+¿Te quedó alguna duda? Aquí estoy para ayudarte 🤗`,
   },
 ];
 

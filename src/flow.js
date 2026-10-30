@@ -17,7 +17,7 @@
 
 const MENU_MARKER = '¿Cuál de estas opciones';
 
-const MENU_TEXT = `¡Hola! 😊 Qué gusto saludarte. Soy Paola, tu asesora de VIREX EVOLUTION.
+const MENU_TEXT = `¡Hola amor! 😊 Qué gusto saludarte. Soy Paola, tu asesora de VIREX EVOLUTION.
 
 Cuéntame, ¿qué te gustaría mejorar?
 
