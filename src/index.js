@@ -43,6 +43,7 @@ const HISTORY_WINDOW = Number(env.HISTORY_WINDOW || 10);
 const DB_PATH = env.DB_PATH || './data/virex-ai.db';
 const BAILEYS_AUTH_PATH = env.BAILEYS_AUTH_PATH || './data/baileys-auth';
 const PRICE_IMAGE_PATH = env.PRICE_IMAGE_PATH || nodePath.join(__dirname, 'assets', 'oferta-virex.jpg');
+const PRICE_AUDIO_PATH = env.PRICE_AUDIO_PATH || nodePath.join(__dirname, 'assets', 'audio-virex.ogg');
 const WELCOME_VIDEO_PATH = nodePath.join(__dirname, 'assets', 'bienvenida.mp4');
 const WELCOME_VIDEO_CAPTION = '🎥 Un video corto para que conozcas VIREX Evolution 😊';
 
@@ -66,6 +67,16 @@ function loadPriceImage() {
   }
 }
 
+/** Nota de voz que sale justo después de la imagen de la oferta; null si no está (se omite). */
+function loadPriceAudio() {
+  try {
+    return fs.readFileSync(PRICE_AUDIO_PATH);
+  } catch (err) {
+    console.warn(`Sin audio tras la oferta (${PRICE_AUDIO_PATH}): ${err.message}. Solo se enviará la imagen.`);
+    return null;
+  }
+}
+
 async function main() {
   if (!env.ANTHROPIC_API_KEY) {
     console.error('Falta ANTHROPIC_API_KEY en el entorno. El bot no puede arrancar.');
@@ -78,6 +89,7 @@ async function main() {
     console.warn('Sin video de bienvenida (ni VIREX_VIDEO_URL ni src/assets/bienvenida.mp4): el primer contacto va solo con el saludo.');
   }
   const priceImage = loadPriceImage();
+  const priceAudio = loadPriceAudio();
   const ai = createAiClient(env, { hasPriceImage: Boolean(priceImage) });
   const transcriber = createTranscriber(env);
 
@@ -92,13 +104,29 @@ async function main() {
   const followupsEnabled = env.FOLLOWUPS_ENABLED !== 'false';
   let currentSock = null; // último socket de WhatsApp, para los seguimientos
 
-  /** Manda la imagen de la oferta con el texto como pie; si falla, manda los precios en texto. */
+  /**
+   * Manda la imagen de la oferta con el texto como pie y, enseguida, el audio;
+   * si la imagen falla, manda los precios en texto y no el audio.
+   */
   async function sendPriceImage(sock, phone, caption) {
     try {
       await sock.sendMessage(phone, { image: priceImage, caption });
     } catch (err) {
       console.error('No se pudo enviar la imagen de precios:', err.message);
       await sock.sendMessage(phone, { text: priceFallback });
+      return;
+    }
+    await sendPriceAudio(sock, phone);
+  }
+
+  /** Nota de voz después de la imagen; si falla, la oferta ya salió y la conversación sigue igual. */
+  async function sendPriceAudio(sock, phone) {
+    if (!priceAudio) return;
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await sock.sendMessage(phone, { audio: priceAudio, mimetype: 'audio/ogg; codecs=opus', ptt: true });
+    } catch (err) {
+      console.error('No se pudo enviar el audio de la oferta:', err.message);
     }
   }
 
