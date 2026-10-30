@@ -9,9 +9,8 @@ const {
   isOptedOut,
   isCustomer,
   saveMessage,
-  getHistory,
 } = require('./store');
-const { nextEndearment } = require('./flow');
+const { APELATIVO } = require('./flow');
 
 /**
  * Seguimientos automáticos: si el cliente vio la oferta (imagen de precios) y
@@ -20,8 +19,7 @@ const { nextEndearment } = require('./flow');
  *   2. a la hora: un saludo corto, disponible para ayudar (sin "buenos días": puede salir a cualquier hora)
  *   3. al día siguiente a las 10:00 a. m.: lo tranquiliza en una línea (paga al recibir, paquete discreto) y menciona el regalo
  * Los tres son cortos y de ayuda, sin presionar la venta ni avisar que "es el último".
- * {apodo} se reemplaza por "amor" o "bebé", alternando con lo que Paola ya usó en la
- * conversación; solo va en el 1 y el 3 (el 2 sin apodo, para no saturar).
+ * {apodo} se reemplaza por "señor"; solo va en el 1 y el 3 (el 2 sin apodo, para no saturar).
  *
  * Reglas para no ser una molestia (ni un riesgo para el número):
  *  - Cualquier mensaje del cliente cancela los pendientes (ver index.js).
@@ -44,7 +42,7 @@ const STEPS = [
   {
     step: 1,
     maxLateMs: 2 * HOUR_MS,
-    text: `Hola {apodo} 😊 soy Paola. Cuéntame, ¿hay algo que quieras saber más del producto? Con gusto te ayudo 💛`,
+    text: `Hola, {apodo} 😊 soy Paola. Cuéntame, ¿hay algo que quieras saber más del producto? Con gusto te ayudo 💛`,
   },
   {
     step: 2,
@@ -111,7 +109,7 @@ async function runDueFollowups({ db, sock, now = Date.now() }) {
     if (!isFollowupPending(db, due.id)) continue;
 
     try {
-      const text = def.text.replace(/\{apodo\}/g, nextEndearment(getHistory(db, due.phone, 10)));
+      const text = def.text.replace(/\{apodo\}/g, APELATIVO);
       await waitLikeHuman(sock, due.phone, text);
       await sock.sendMessage(due.phone, { text });
       saveMessage(db, due.phone, 'assistant', text);

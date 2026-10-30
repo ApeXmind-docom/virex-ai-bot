@@ -35,8 +35,8 @@ const GREETING_MARKER = 'Soy Paola, tu asesora de VIREX EVOLUTION';
 
 function buildGreeting({ hasVideo = false } = {}) {
   return hasVideo
-    ? `¡Hola amor! 😊 Qué gusto saludarte. ${GREETING_MARKER}.\nMira el video cortico que te dejé y me cuentas qué te parece 💛`
-    : `¡Hola amor! 😊 Qué gusto saludarte. ${GREETING_MARKER}.\nCuéntame, ¿en qué te puedo ayudar? 💛`;
+    ? `¡Hola, ${APELATIVO}! 😊 Qué gusto saludarte. ${GREETING_MARKER}.\nMira el video cortico que te dejé y me cuentas qué te parece 💛`
+    : `¡Hola, ${APELATIVO}! 😊 Qué gusto saludarte. ${GREETING_MARKER}.\nCuéntame, ¿en qué te puedo ayudar? 💛`;
 }
 
 const DISCLAIMER = 'ℹ️ Es un suplemento alimenticio y no reemplaza ningún tratamiento médico.';
@@ -244,20 +244,8 @@ function parseBottleChoice(text) {
   return BOTTLE_WORDS[key] || Number(key);
 }
 
-/**
- * Apelativo cariñoso para el próximo mensaje: alterna "amor" y "bebé" a lo largo
- * de la conversación mirando cuál fue el último que Paola usó. El primero es "amor".
- */
-const ENDEARMENT = /(?<![\p{L}])(amor|beb[eé])(?![\p{L}])/iu; // \b no sirve con la "é" final
-function nextEndearment(history) {
-  for (let i = history.length - 1; i >= 0; i--) {
-    const m = history[i];
-    if (m.role !== 'assistant') continue;
-    const found = String(m.content).match(ENDEARMENT);
-    if (found) return /^amor$/i.test(found[1]) ? 'bebé' : 'amor';
-  }
-  return 'amor';
-}
+/** Cómo Paola llama al cliente en los mensajes fijos (no "amor", "bebé" ni "hombre"). */
+const APELATIVO = 'señor';
 
 /** La oferta (imagen) se mandó hace poco y el cliente contesta con la presentación que quiere. */
 function pickOrderReply(history, text) {
@@ -268,7 +256,7 @@ function pickOrderReply(history, text) {
   const label = bottles === 1 ? '1 frasco' : `${bottles} frascos`;
   return {
     bottles,
-    text: `¡Excelente elección, ${label}, ${nextEndearment(history)}! 🙌 Para programar tu envío, regálame: nombre completo, ciudad, dirección y un número de contacto 📦`,
+    text: `¡Excelente elección, ${label}, ${APELATIVO}! 🙌 Para programar tu envío, regálame: nombre completo, ciudad, dirección y un número de contacto 📦`,
   };
 }
 
@@ -326,6 +314,6 @@ module.exports = {
   buildPriceFallback,
   parseBottleChoice,
   pickOrderReply,
-  nextEndearment,
+  APELATIVO,
   isOptOut,
 };
