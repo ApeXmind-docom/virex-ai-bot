@@ -17,9 +17,7 @@
 
 const MENU_MARKER = '¿Cuál de estas opciones';
 
-const MENU_TEXT = `¡Hola amor! 😊 Qué gusto saludarte. Soy Paola, tu asesora de VIREX EVOLUTION.
-
-Cuéntame, ¿qué te gustaría mejorar?
+const MENU_TEXT = `Con gusto 💛 Cuéntame, ¿qué te gustaría mejorar?
 
 1️⃣ Energía y vitalidad
 2️⃣ Confianza y rendimiento diario
@@ -27,6 +25,19 @@ Cuéntame, ¿qué te gustaría mejorar?
 4️⃣ Todas las anteriores
 
 ${MENU_MARKER} se ajusta más a lo que necesitas?`;
+
+/**
+ * Primer contacto: Paola saluda (y el sistema manda el video de bienvenida).
+ * El menú NO sale aquí: solo después, si el cliente quiere avanzar sin decir
+ * qué necesita. Si ya cuenta para qué lo quiere, responde la IA conversando.
+ */
+const GREETING_MARKER = 'Soy Paola, tu asesora de VIREX EVOLUTION';
+
+function buildGreeting({ hasVideo = false } = {}) {
+  return hasVideo
+    ? `¡Hola amor! 😊 Qué gusto saludarte. ${GREETING_MARKER}.\nMira el video cortico que te dejé y me cuentas qué te parece 💛`
+    : `¡Hola amor! 😊 Qué gusto saludarte. ${GREETING_MARKER}.\nCuéntame, ¿en qué te puedo ayudar? 💛`;
+}
 
 const DISCLAIMER = 'ℹ️ Es un suplemento alimenticio y no reemplaza ningún tratamiento médico.';
 
@@ -67,10 +78,48 @@ const BUY_INTENT = /(compr|pedir|pedido|kiero|quiero (el|los|las|un|una|uno|1|2|
 const GREETING = /\b(hola|buen[oa]s|info|informaci[oó]n|me interesa|cu[eé]ntame|saludos|ola)/i;
 const WORD_NUMBERS = { uno: 1, dos: 2, tres: 3, cuatro: 4 };
 
-function wantsMenu(text) {
-  const t = String(text || '').trim();
-  return t.length > 0 && t.length <= 60 && GREETING.test(t) && !BUY_INTENT.test(t);
+// Palabras de un saludo o de una petición de información sin contenido propio
+// ("hola, quiero más información"). Si aparece cualquier otra ("energía",
+// "cansado", "precio"), el cliente ya está diciendo qué necesita → responde la IA.
+const GREETING_WORDS = new Set((
+  'hola holi ola holaa buenas buenos buen dia dias tarde tardes noche noches saludos hey ' +
+  'info informacion mas me interesa quiero saber cuentame producto por favor virex evolution ' +
+  'anuncio vi el la de un una necesito quisiera pueden puedes darme dar enviarme mandarme paola'
+).split(' '));
+// Respuestas sueltas de quien quiere seguir sin decir qué necesita.
+const GENERIC_WORDS = new Set((
+  'si sí ok okay vale listo dale claro bueno perfecto gracias genial super bien excelente ' +
+  'me interesa cuentame cuéntame info informacion mas hola buenas quiero saber continua continuar ' +
+  'adelante vamos'
+).split(' '));
+
+function wordsOf(text) {
+  return String(text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9ñ\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
 }
+
+function onlyWordsFrom(text, allowed, maxWords) {
+  const words = wordsOf(text);
+  const normalized = new Set([...allowed].map((w) => wordsOf(w)[0] || w));
+  return words.length > 0 && words.length <= maxWords && words.every((w) => normalized.has(w));
+}
+
+/** Saludo "puro": "hola", "buenas tardes", "hola, quiero más información". */
+function isPureGreeting(text) {
+  return !BUY_INTENT.test(String(text || '')) && onlyWordsFrom(text, GREETING_WORDS, 8);
+}
+
+/** Respuesta suelta para seguir ("sí", "ok", "cuéntame"), sin decir qué necesita. */
+function isGenericReply(text) {
+  return !BUY_INTENT.test(String(text || '')) && onlyWordsFrom(text, GENERIC_WORDS, 4);
+}
+
+const wantsMenu = isPureGreeting; // nombre anterior, por compatibilidad
 
 function normalizeChoice(text) {
   const t = String(text || '')
@@ -195,6 +244,21 @@ function parseBottleChoice(text) {
   return BOTTLE_WORDS[key] || Number(key);
 }
 
+/**
+ * Apelativo cariñoso para el próximo mensaje: alterna "amor" y "bebé" a lo largo
+ * de la conversación mirando cuál fue el último que Paola usó. El primero es "amor".
+ */
+const ENDEARMENT = /(?<![\p{L}])(amor|beb[eé])(?![\p{L}])/iu; // \b no sirve con la "é" final
+function nextEndearment(history) {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.role !== 'assistant') continue;
+    const found = String(m.content).match(ENDEARMENT);
+    if (found) return /^amor$/i.test(found[1]) ? 'bebé' : 'amor';
+  }
+  return 'amor';
+}
+
 /** La oferta (imagen) se mandó hace poco y el cliente contesta con la presentación que quiere. */
 function pickOrderReply(history, text) {
   const offered = history.slice(-4).some((m) => m.role === 'assistant' && m.content.includes(PRICE_IMAGE_NOTE));
@@ -204,7 +268,7 @@ function pickOrderReply(history, text) {
   const label = bottles === 1 ? '1 frasco' : `${bottles} frascos`;
   return {
     bottles,
-    text: `¡Excelente elección, ${label}! 🙌 Para programar tu envío, regálame: nombre completo, ciudad, dirección y un número de contacto 📦`,
+    text: `¡Excelente elección, ${label}, ${nextEndearment(history)}! 🙌 Para programar tu envío, regálame: nombre completo, ciudad, dirección y un número de contacto 📦`,
   };
 }
 
@@ -221,12 +285,19 @@ function isOptOut(text) {
  * @param {string} text  Mensaje actual del cliente.
  * @returns {{text:string}|null}  null = que responda la IA.
  */
-function pickScriptedReply(history, text) {
-  if (history.length === 0 && wantsMenu(text)) {
-    return { text: MENU_TEXT };
+function pickScriptedReply(history, text, { hasVideo = false } = {}) {
+  // Primer mensaje que es solo un saludo: saluda (el video ya salió) y espera.
+  if (history.length === 0 && isPureGreeting(text)) {
+    return { text: buildGreeting({ hasVideo }) };
   }
 
   const last = history[history.length - 1];
+
+  // Tras el saludo, si quiere avanzar sin decir qué necesita, recién ahí van las opciones.
+  if (history.length <= 2 && last && last.role === 'assistant' && last.content.includes(GREETING_MARKER) && isGenericReply(text)) {
+    return { text: MENU_TEXT };
+  }
+
   if (last && last.role === 'assistant' && last.content.includes(MENU_MARKER)) {
     const choice = normalizeChoice(text);
     if (choice) {
@@ -241,6 +312,9 @@ module.exports = {
   pickScriptedReply,
   normalizeChoice,
   wantsMenu,
+  isPureGreeting,
+  isGenericReply,
+  buildGreeting,
   MENU_TEXT,
   PRICE_MARKER,
   PRICE_IMAGE_NOTE,
@@ -252,5 +326,6 @@ module.exports = {
   buildPriceFallback,
   parseBottleChoice,
   pickOrderReply,
+  nextEndearment,
   isOptOut,
 };
