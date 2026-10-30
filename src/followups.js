@@ -15,8 +15,9 @@ const {
  * Seguimientos automáticos: si el cliente vio la oferta (imagen de precios) y
  * deja de contestar, Paola le escribe tres veces como máximo:
  *   1. a la media hora: se ofrece a resolver dudas sobre el producto
- *   2. a la hora: lo tranquiliza (paga al recibir, discreto, original)
- *   3. al día siguiente a las 10:00 a. m.: último mensaje, sin presión, con salida fácil
+ *   2. a la hora: lo tranquiliza en una línea (paga al recibir, paquete discreto)
+ *   3. al día siguiente a las 10:00 a. m.: un saludo corto, disponible para ayudar
+ * Los tres son cortos y de ayuda, sin presionar la venta ni avisar que "es el último".
  *
  * Reglas para no ser una molestia (ni un riesgo para el número):
  *  - Cualquier mensaje del cliente cancela los pendientes (ver index.js).
@@ -39,22 +40,18 @@ const STEPS = [
   {
     step: 1,
     maxLateMs: 2 * HOUR_MS,
-    text: `¡Hola! 😊 Soy Paola. Vi que estuviste mirando la oferta y quise escribirte para saber cómo vas.
-Cuéntame, ¿hay algo que quieras saber más del producto? Con gusto te ayudo con cualquier duda 💛`,
+    text: `Hola 😊 soy Paola. Cuéntame, ¿hay algo que quieras saber más del producto? Con gusto te ayudo 💛`,
   },
   {
     step: 2,
     maxLateMs: 2 * HOUR_MS,
-    text: `Te escribo porque sé que antes de decidirse es normal tener dudas, y está bien 🤗
-Para que estés tranquilo: pagas cuando lo recibes en tu casa, llega en un paquete discreto y es un producto original y sellado 📦
-¿Hay algo que te preocupe o que quieras preguntarme? Si prefieres, también puedes empezar con 1 frasco para probarlo 😉`,
+    text: `Por si te sirve: pagas cuando lo recibes en tu casa y llega en paquete discreto 📦
+¿Te quedó alguna duda? Aquí estoy para ayudarte 🤗`,
   },
   {
     step: 3,
     maxLateMs: 6 * HOUR_MS,
-    text: `¡Hola de nuevo! 💛 No quiero ser insistente, así que este es mi último mensaje.
-La promoción con obsequio y envío gratis sigue disponible para ti. Si te animas, solo dime tu nombre y tu ciudad y yo me encargo de coordinar tu envío 🚚
-Y si prefieres que no te escriba más, no hay problema: me avisas y listo 🙏`,
+    text: `¡Hola! 😊 ¿Cómo amaneciste? Quedo atenta por si quieres preguntarme algo del producto 💛`,
   },
 ];
 
