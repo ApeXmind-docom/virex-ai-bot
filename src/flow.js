@@ -244,6 +244,21 @@ function parseBottleChoice(text) {
   return BOTTLE_WORDS[key] || Number(key);
 }
 
+/**
+ * Apelativo cariñoso para el próximo mensaje: alterna "amor" y "bebé" a lo largo
+ * de la conversación mirando cuál fue el último que Paola usó. El primero es "amor".
+ */
+const ENDEARMENT = /(?<![\p{L}])(amor|beb[eé])(?![\p{L}])/iu; // \b no sirve con la "é" final
+function nextEndearment(history) {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.role !== 'assistant') continue;
+    const found = String(m.content).match(ENDEARMENT);
+    if (found) return /^amor$/i.test(found[1]) ? 'bebé' : 'amor';
+  }
+  return 'amor';
+}
+
 /** La oferta (imagen) se mandó hace poco y el cliente contesta con la presentación que quiere. */
 function pickOrderReply(history, text) {
   const offered = history.slice(-4).some((m) => m.role === 'assistant' && m.content.includes(PRICE_IMAGE_NOTE));
@@ -253,7 +268,7 @@ function pickOrderReply(history, text) {
   const label = bottles === 1 ? '1 frasco' : `${bottles} frascos`;
   return {
     bottles,
-    text: `¡Excelente elección, ${label}! 🙌 Para programar tu envío, regálame: nombre completo, ciudad, dirección y un número de contacto 📦`,
+    text: `¡Excelente elección, ${label}, ${nextEndearment(history)}! 🙌 Para programar tu envío, regálame: nombre completo, ciudad, dirección y un número de contacto 📦`,
   };
 }
 
@@ -311,5 +326,6 @@ module.exports = {
   buildPriceFallback,
   parseBottleChoice,
   pickOrderReply,
+  nextEndearment,
   isOptOut,
 };
