@@ -22,11 +22,12 @@ function colombiaClockSection(now = new Date()) {
     `Úsalo solo para la regla de entrega inmediata de ENTREGAS.`;
 }
 
-function createAiClient(env, { hasPriceImage = false } = {}) {
+function createAiClient(env, { hasPriceImage = false, priceCaptionOn = false } = {}) {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
   const systemPrompt = buildSystemPrompt({
     hasPriceImage,
+    priceCaptionOn,
     dosisConfirmada: env.DOSIS_CONFIRMADA === 'true',
     dosisTexto: env.DOSIS_TEXTO || '2 cápsulas al día',
     productUrl: env.PRODUCT_URL || '',

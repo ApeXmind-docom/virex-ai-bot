@@ -93,7 +93,7 @@ async function main() {
   }
   const priceImage = loadPriceImage();
   const priceAudio = loadPriceAudio();
-  const ai = createAiClient(env, { hasPriceImage: Boolean(priceImage) });
+  const ai = createAiClient(env, { hasPriceImage: Boolean(priceImage), priceCaptionOn: env.PRICE_IMAGE_CAPTION === 'true' });
   const transcriber = createTranscriber(env);
 
   const prices = {
@@ -102,7 +102,11 @@ async function main() {
     price3: env.PRICE_3_BOTTLES || '$300.000',
     gift: env.GIFT_TEXT === undefined ? 'una crema Rhyno' : env.GIFT_TEXT,
   };
-  const priceCaption = buildPriceCaption(prices);
+  // La imagen de precios sale SOLA (sin el texto de recomendación debajo).
+  // PRICE_IMAGE_CAPTION=true devuelve el texto como pie de la imagen.
+  const priceCaptionOn = env.PRICE_IMAGE_CAPTION === 'true';
+  const priceCaption = priceCaptionOn ? buildPriceCaption(prices) : '';
+  const offerNote = (caption) => (caption ? `${PRICE_IMAGE_NOTE}\n${caption}` : PRICE_IMAGE_NOTE);
   const priceFallback = buildPriceFallback(prices);
   const followupsEnabled = env.FOLLOWUPS_ENABLED !== 'false';
   let currentSock = null; // último socket de WhatsApp, para los seguimientos
@@ -113,7 +117,7 @@ async function main() {
    */
   async function sendPriceImage(sock, phone, caption) {
     try {
-      await sock.sendMessage(phone, { image: priceImage, caption });
+      await sock.sendMessage(phone, caption ? { image: priceImage, caption } : { image: priceImage });
     } catch (err) {
       console.error('No se pudo enviar la imagen de precios:', err.message);
       await sock.sendMessage(phone, { text: priceFallback });
@@ -197,7 +201,7 @@ async function main() {
     });
     if (priceReply) {
       saveMessage(db, phone, 'user', text);
-      saveMessage(db, phone, 'assistant', `${PRICE_IMAGE_NOTE}\n${priceReply.caption}`);
+      saveMessage(db, phone, 'assistant', offerNote(priceReply.caption));
       await waitLikeHuman(sock, phone, priceReply.caption);
       await sendPriceImage(sock, phone, priceReply.caption);
       scheduleFollowups(db, phone, { enabled: followupsEnabled });
@@ -225,7 +229,7 @@ async function main() {
         await waitLikeHuman(sock, phone, cleanAnswer);
         await sock.sendMessage(phone, { text: cleanAnswer });
       }
-      saveMessage(db, phone, 'assistant', `${PRICE_IMAGE_NOTE}\n${priceCaption}`);
+      saveMessage(db, phone, 'assistant', offerNote(priceCaption));
       await waitLikeHuman(sock, phone, priceCaption);
       await sendPriceImage(sock, phone, priceCaption);
       scheduleFollowups(db, phone, { enabled: followupsEnabled });

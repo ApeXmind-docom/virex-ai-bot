@@ -26,6 +26,7 @@ const { PRICE_MARKER, PRICE_IMAGE_NOTE, computeOffer, buildPriceFallback } = req
 
 function buildSystemPrompt({
   hasPriceImage = false,
+  priceCaptionOn = false,
   dosisConfirmada,
   dosisTexto,
   productUrl,
@@ -56,10 +57,12 @@ function buildSystemPrompt({
 
   const priceInstruction = hasPriceImage
     ? `Cuando pregunten el precio, o digan que sí a que se los cuentes, NO escribas
-los precios: el sistema manda una imagen con la oferta de 1, 2 y 3 frascos y,
-debajo, la recomendación del pack de 3 frascos con las opciones 1, 2 y 3. Para
+los precios: el sistema manda una imagen con la oferta de 1, 2 y 3 frascos
+${priceCaptionOn
+  ? 'y, debajo, la recomendación del pack de 3 frascos con las opciones 1, 2 y 3.'
+  : '(la imagen va SOLA, sin texto debajo, y enseguida una nota de voz).'} Para
 activarla escribe ÚNICAMENTE ${PRICE_MARKER} (el cliente no lo ve). No añadas
-nada más ni repitas tú la recomendación.
+nada más ni repitas tú los precios${priceCaptionOn ? ' ni la recomendación' : ''}.
 
 Si en el historial ya aparece "${PRICE_IMAGE_NOTE}",
 no la repitas ni vuelvas a listar todos los precios: responde lo que
