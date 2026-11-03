@@ -57,6 +57,12 @@ function initStore(dbPath) {
       purchased_at INTEGER NOT NULL,
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
   `);
 
   return db;
@@ -122,6 +128,41 @@ function isUserRateLimited(db, phone, maxPerHour) {
 /** Cancela los seguimientos pendientes de un cliente (porque escribió, o pidió que no le escriban). */
 function cancelFollowups(db, phone) {
   db.prepare(`UPDATE followups SET status = 'cancelled' WHERE phone = ? AND status = 'pending'`).run(phone);
+}
+
+/** Cancela TODOS los seguimientos pendientes (al pausar el bot, para que no salgan de golpe al reanudar). */
+function cancelAllFollowups(db) {
+  db.prepare(`UPDATE followups SET status = 'cancelled' WHERE status = 'pending'`).run();
+}
+
+function getSetting(db, key) {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key);
+  return row ? row.value : null;
+}
+
+function setSetting(db, key, value) {
+  db.prepare(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?,?,?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+  ).run(key, String(value), Date.now());
+}
+
+/**
+ * Interruptor general del bot. Está encendido salvo que se pause desde el
+ * panel (guardado en la base, sobrevive reinicios) o que BOT_ENABLED=false
+ * en el entorno (apagado duro, no se puede encender desde el panel).
+ */
+function isBotEnabled(db, env = process.env) {
+  if (env.BOT_ENABLED === 'false') return false;
+  return getSetting(db, 'bot_enabled') !== 'off';
+}
+
+/** Enciende o pausa el bot. Al pausar se cancelan los seguimientos pendientes. */
+function setBotEnabled(db, enabled) {
+  db.transaction(() => {
+    setSetting(db, 'bot_enabled', enabled ? 'on' : 'off');
+    if (!enabled) cancelAllFollowups(db);
+  })();
 }
 
 /** Reemplaza los seguimientos pendientes de un cliente por `plan` = [{step, dueAt}]. */
@@ -273,6 +314,11 @@ module.exports = {
   incrementDailyUsage,
   isUserRateLimited,
   cancelFollowups,
+  cancelAllFollowups,
+  getSetting,
+  setSetting,
+  isBotEnabled,
+  setBotEnabled,
   addFollowups,
   getDueFollowups,
   isFollowupPending,

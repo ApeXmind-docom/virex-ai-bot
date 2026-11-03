@@ -23,8 +23,9 @@ const MAX_RESTART_RETRIES = 5;
  * @param {(phone:string, text:string) => Promise<void>} onMessage  Handler de mensajes entrantes.
  * @param {{transcribe:Function}|null} transcriber  Transcriptor de notas de voz (Whisper), o null si no está configurado.
  * @param {(sock:object) => void} [onSocket]  Se llama con cada socket nuevo (también tras reconectar), para mensajes que el bot inicia solo (seguimientos).
+ * @param {() => boolean} [isEnabled]  Interruptor general: si devuelve false el bot sigue conectado pero NO lee ni responde nada (atiende una persona).
  */
-async function startWhatsApp(authPath, onMessage, transcriber, onSocket) {
+async function startWhatsApp(authPath, onMessage, transcriber, onSocket, isEnabled = () => true) {
   const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -88,7 +89,7 @@ async function startWhatsApp(authPath, onMessage, transcriber, onSocket) {
       if (statusCode === DisconnectReason.restartRequired && restartRetries < MAX_RESTART_RETRIES) {
         restartRetries += 1;
         console.log(`Reinicio requerido por WhatsApp (normal tras vincular). Reconectando ya (${restartRetries}/${MAX_RESTART_RETRIES})...`);
-        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket), 1000);
+        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket, isEnabled), 1000);
         return;
       }
 
@@ -108,7 +109,7 @@ async function startWhatsApp(authPath, onMessage, transcriber, onSocket) {
         console.log(
           `QR sin escanear (código ${statusCode}). Nuevo QR en ${UNLINKED_RETRY_DELAY_MS / 1000}s (${unlinkedRetries}/${MAX_UNLINKED_RETRIES})...`
         );
-        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket), UNLINKED_RETRY_DELAY_MS);
+        setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket, isEnabled), UNLINKED_RETRY_DELAY_MS);
         return;
       }
 
@@ -120,7 +121,7 @@ async function startWhatsApp(authPath, onMessage, transcriber, onSocket) {
       console.log(
         `Conexión cerrada (código ${statusCode}). Reintentando en ${Math.round(delayMs / 1000)}s (intento ${reconnectAttempts})...`
       );
-      setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket), delayMs);
+      setTimeout(() => startWhatsApp(authPath, onMessage, transcriber, onSocket, isEnabled), delayMs);
     } else if (connection === 'open') {
       reconnectAttempts = 0; // se reconectó bien, resetea el contador de espera
       unlinkedRetries = 0;
@@ -134,6 +135,8 @@ async function startWhatsApp(authPath, onMessage, transcriber, onSocket) {
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
+    // Bot en pausa: ni se transcribe, ni se guarda, ni se contesta. Una persona atiende el chat.
+    if (!isEnabled()) return;
 
     for (const msg of messages) {
       if (!msg.message || msg.key.fromMe) continue;

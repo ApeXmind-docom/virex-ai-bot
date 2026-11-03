@@ -8,6 +8,7 @@ const {
   listCustomers,
   getCustomer,
   getCustomerStats,
+  isBotEnabled,
 } = require('./store');
 
 function maskPhone(jid) {
@@ -221,7 +222,32 @@ function renderDashboard(db, env) {
     )
     .join('');
 
+  const botOn = isBotEnabled(db, env);
+  const hardOff = env.BOT_ENABLED === 'false';
+  const botCard = botOn
+    ? `<div class="card">
+        <strong>Respuestas automáticas: <span style="color:#1fae5f">ACTIVAS</span></strong>
+        <p style="color:#7a7a7a;font-size:.8125rem;margin:.4rem 0 0">Paola contesta sola a cada mensaje y envía los seguimientos.</p>
+        <form method="POST" action="/bot" style="margin-top:.75rem"
+          onsubmit="return confirm('¿Pausar a Paola? Dejará de contestar y de enviar seguimientos; el número sigue conectado y una persona puede atender los chats.')">
+          <input type="hidden" name="enabled" value="off">
+          <button type="submit" class="btn ghost">⏸ Pausar a Paola</button>
+        </form>
+      </div>`
+    : `<div class="card" style="border-color:#e0a51b">
+        <strong>Respuestas automáticas: <span style="color:#e0a51b">EN PAUSA</span></strong>
+        <p style="color:#7a7a7a;font-size:.8125rem;margin:.4rem 0 0">Paola NO lee ni contesta mensajes y no envía seguimientos. El número sigue conectado: una persona atiende los chats.${
+          hardOff ? ' Está apagada por BOT_ENABLED=false en el entorno; cámbialo en Render para poder reanudarla.' : ''
+        }</p>
+        ${hardOff ? '' : `<form method="POST" action="/bot" style="margin-top:.75rem"
+          onsubmit="return confirm('¿Reanudar a Paola? Volverá a contestar sola a todos los mensajes nuevos.')">
+          <input type="hidden" name="enabled" value="on">
+          <button type="submit" class="btn">▶ Reanudar a Paola</button>
+        </form>`}
+      </div>`;
+
   const body = `
+    ${botCard}
     <div class="card">
       <div style="text-align:center">${qrBlock}</div>
     </div>
