@@ -36,6 +36,8 @@ const {
   isUserRateLimited,
   cancelFollowups,
   setOptOut,
+  isBotEnabled,
+  setBotEnabled,
 } = require('./store');
 
 const env = process.env;
@@ -147,6 +149,10 @@ async function main() {
   }
 
   async function onMessage(phone, text, sock) {
+    // Interruptor general: si el bot está en pausa (atiende una persona) no se contesta nada,
+    // ni siquiera lo que ya estaba esperando en la cola de ráfagas.
+    if (!isBotEnabled(db, env)) return;
+
     // Si pide que no le escriban, no se le manda ningún seguimiento.
     if (isOptOut(text)) setOptOut(db, phone);
 
@@ -352,6 +358,32 @@ async function main() {
         return;
       }
 
+      // Interruptor general del bot (pausar / reanudar) desde el panel.
+      if (path === '/bot' && req.method === 'POST') {
+        if (!hasValidSession(req)) {
+          res.writeHead(302, { Location: '/login' });
+          res.end();
+          return;
+        }
+        const { enabled } = await parseFormBody(req);
+        if (enabled !== 'on' && enabled !== 'off') {
+          res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Valor no válido.');
+          return;
+        }
+        // BOT_ENABLED=false en el entorno es un apagado duro: no se puede reanudar desde el panel.
+        if (enabled === 'on' && env.BOT_ENABLED === 'false') {
+          res.writeHead(409, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('El bot está apagado por BOT_ENABLED=false en el entorno; cámbialo en Render para reanudarlo.');
+          return;
+        }
+        setBotEnabled(db, enabled === 'on');
+        console.log(enabled === 'on' ? '▶ Bot REANUDADO desde el panel.' : '⏸ Bot en PAUSA desde el panel (no responde ni envía seguimientos).');
+        res.writeHead(302, { Location: '/' });
+        res.end();
+        return;
+      }
+
       // Clientes que ya compraron: se marcan o se quitan desde el panel.
       if ((path === '/clientes' || path === '/clientes/eliminar') && req.method === 'POST') {
         if (!hasValidSession(req)) {
@@ -397,9 +429,15 @@ async function main() {
   const lockPath = nodePath.join(nodePath.dirname(BAILEYS_AUTH_PATH), 'whatsapp.lock');
   acquireSingletonLock(lockPath)
     .then(() =>
-      startWhatsApp(BAILEYS_AUTH_PATH, enqueueMessage, transcriber, (sock) => {
-        currentSock = sock;
-      })
+      startWhatsApp(
+        BAILEYS_AUTH_PATH,
+        enqueueMessage,
+        transcriber,
+        (sock) => {
+          currentSock = sock;
+        },
+        () => isBotEnabled(db, env)
+      )
     )
     .catch((err) => console.error('Error fatal conectando WhatsApp:', err));
 
@@ -408,6 +446,7 @@ async function main() {
     let followupsRunning = false;
     setInterval(async () => {
       if (followupsRunning || !currentSock || getState().status !== 'connected') return;
+      if (!isBotEnabled(db, env)) return; // en pausa: tampoco salen seguimientos
       followupsRunning = true;
       try {
         await runDueFollowups({ db, sock: currentSock });
